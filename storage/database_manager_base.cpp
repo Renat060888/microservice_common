@@ -81,45 +81,6 @@ bool DatabaseManager::init( SInitSettings _settings ){
     return true;
 }
 
-inline mongoc_collection_t * DatabaseManager::getAnalyticContextTable( common_types::TContextId _ctxId, TSensorId _sensorId ){
-
-    assert( _ctxId > 0 && _sensorId > 0 );
-
-    mongoc_collection_t * contextTable = nullptr;
-    auto iter = m_contextCollections.find( _ctxId );
-    if( iter != m_contextCollections.end() ){
-        contextTable = iter->second;
-    }
-    else{
-        const string tableName = getTableName(_ctxId, _sensorId);
-        contextTable = mongoc_client_get_collection(    m_mongoClient,
-                                                        m_settings.databaseName.c_str(),
-                                                        tableName.c_str() );
-
-        createIndex( tableName, {mongo_fields::analytic::detected_object::SESSION,
-                                 mongo_fields::analytic::detected_object::LOGIC_TIME}
-                   );
-
-        // TODO: add record to context info
-
-        m_contextCollections.insert( {_ctxId, contextTable} );
-    }
-
-    return contextTable;
-}
-
-inline string DatabaseManager::getTableName( common_types::TContextId _ctxId, TSensorId _sensorId ){
-
-    const string name = string("video_server_") +
-                        mongo_fields::analytic::COLLECTION_NAME +
-                        "_" +
-                        std::to_string(_ctxId) +
-                        "_" +
-                        std::to_string(_sensorId);
-
-    return name;
-}
-
 inline bool DatabaseManager::createIndex( const std::string & _tableName, const std::vector<std::string> & _fieldNames ){
 
     //

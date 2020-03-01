@@ -26,6 +26,8 @@ INCLUDEPATH += \
 
 LIBS += -L/usr/lib/x86_64-linux-gnu/nvidia/current
 LIBS += \
+    -lmongoc-1.0 \
+    -lbson-1.0 \
     -lcurl \
     -lrabbitmq \
     -lnvidia-ml \
@@ -53,7 +55,7 @@ SOURCES += \
         communication/unified_command_convertor.cpp \
         communication/webserver.cpp \
         communication/websocket_server.cpp \
-        storage/database_manager_astra.cpp \
+        storage/database_manager_base.cpp \
         system/a_args_parser.cpp \
         system/a_config_reader.cpp \
         system/daemonizator.cpp \
@@ -93,7 +95,7 @@ HEADERS += \
     communication/unified_command_convertor.h \
     communication/webserver.h \
     communication/websocket_server.h \
-    storage/database_manager_astra.h \
+    storage/database_manager_base.h \
     system/a_args_parser.h \
     system/a_config_reader.h \
     system/class_factory.h \

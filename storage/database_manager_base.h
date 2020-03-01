@@ -60,8 +60,6 @@ private:
     DatabaseManager( const DatabaseManager & _inst ) = delete;
     DatabaseManager & operator=( const DatabaseManager & _inst ) = delete;
 
-    inline mongoc_collection_t * getAnalyticContextTable( common_types::TContextId _ctxId, TSensorId _sensorId );
-    inline std::string getTableName( common_types::TContextId _ctxId, TSensorId _sensorId );
     inline bool createIndex( const std::string & _tableName, const std::vector<std::string> & _fieldNames );
 
     // data

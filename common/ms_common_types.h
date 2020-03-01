@@ -120,6 +120,17 @@ struct SWALOnceMoreRecord : SWALRecord {
 // ---------------------------------------------------------------------------
 // types deduction
 // ---------------------------------------------------------------------------
+class IWALRecordVisitor {
+public:
+    virtual ~IWALRecordVisitor(){}
+
+    virtual void visit( const SWALClientOperation * _record ) = 0;
+    virtual void visit( const SWALProcessEvent * _record ) = 0;
+    virtual void visit( const SWALOnceMoreRecord * _record ) = 0;
+
+private:
+
+};
 
 
 
