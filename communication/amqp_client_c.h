@@ -5,6 +5,7 @@
 #include <vector>
 #include <thread>
 #include <map>
+#include <set>
 #include <atomic>
 #include <queue>
 #include <condition_variable>
@@ -38,7 +39,7 @@ public:
             , login("guest")
             , pass("guest")
             , serverPollTimeoutMillisec(10)
-            , deliveredMessageExpirationSec( 60 * 10 )
+            , deliveredMessageExpirationSec( 30 )
         {}
 
         bool asyncMode;
@@ -81,6 +82,7 @@ private:
     // async
     bool checkResponseReadyness( const std::string & _corrId );
     std::string getAsyncResponse( const std::string & _corrId );
+    void refuseFromResponse( const std::string & _corrId );
     bool sendPackageAsync( const std::string & _msg,
                            const std::string & _corrId,
                            const std::string & _exchangeName,
@@ -99,6 +101,7 @@ private:
     SInitSettings m_settings;
     std::string m_lastError;
     std::map<TCorrelationId, std::string> m_readyResponsesToAsyncMessages;
+    std::set<TCorrelationId> m_refusedMessages;
 
     // service
     amqp_connection_state_t m_connTransmit;

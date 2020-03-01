@@ -98,6 +98,8 @@ public:
         , m_asyncRequest(false)
         , m_notifyAboutAsyncViaCallback(false)
         , m_flags(0)
+        , timeouted(false)
+        , requestTimeMillisec(0)
     {}
 
     // sync payload
@@ -108,8 +110,10 @@ public:
 
     // async payload
     virtual std::string sendMessageAsync( const std::string & _msg, const std::string & _correlationId = "" ){ assert( false && "not implemented in derived class" ); }
-    virtual bool checkResponseReadyness( const std::string & _correlationId ){ assert( false && "not implemented in derived class" ); }
-    virtual std::string getAsyncResponse( const std::string & _correlationId ){ assert( false && "not implemented in derived class" ); }
+    virtual bool checkResponseReadyness(){ assert( false && "not implemented in derived class" ); }
+    virtual std::string getAsyncResponse(){ assert( false && "not implemented in derived class" ); }
+    bool isTimeouted(){ return timeouted; }
+    bool isPerforming(){ return ! m_correlationId.empty(); }
 
     // service
     INetworkEntity::TConnectionId getConnId(){ return m_connectionId; }
@@ -125,7 +129,10 @@ public:
 
     INetworkEntity::TConnectionId m_connectionId;
     std::string m_incomingMessage;
+
     TCorrelationId m_correlationId;
+    bool timeouted;
+    int64_t requestTimeMillisec;
 
 
 protected:

@@ -103,64 +103,53 @@ public:
     // async mode
     virtual std::string sendMessageAsync( const std::string & _msg, const std::string & _correlationId = "" ) override {
 
-        {
-            // requester
-            if( AEnvironmentRequest::m_correlationId.empty() ){
-                const string corrId = common_utils::generateUniqueId();
-                const string replyTo = routingTarget->predatorExchangePointName + AmqpClient::REPLY_TO_DELIMETER + routingTarget->predatorRoutingKeyName;
+        // requester
+        if( AEnvironmentRequest::m_correlationId.empty() ){
+            AEnvironmentRequest::requestTimeMillisec = common_utils::getCurrentTimeMillisec();
+            const string corrId = common_utils::generateUniqueId();
+            const string replyTo = routingTarget->predatorExchangePointName + AmqpClient::REPLY_TO_DELIMETER + routingTarget->predatorRoutingKeyName;
 
-                AEnvironmentRequest::m_correlationId = corrId;
-                const bool rt = networkClient->sendPackageAsync( _msg,
-                                                                 corrId,
-                                                                 routingTarget->targetExchangePointName,
-                                                                 routingTarget->targetRoutingKeyName,
-                                                                 replyTo );
-                return corrId;
-            }
-            // replier
-            else{
-                const string & corrId = m_correlationId;
-                const string replyToDummy = "i_am_replier";
-                const string ep = replyTo.substr( 0, replyTo.find(AmqpClient::REPLY_TO_DELIMETER) );
-                const string rk = replyTo.substr( replyTo.find(AmqpClient::REPLY_TO_DELIMETER) + 1, replyTo.size() - replyTo.find(AmqpClient::REPLY_TO_DELIMETER) );
-
-                const bool rt = networkClient->sendPackageAsync( _msg,
-                                                                 corrId,
-                                                                 ep,
-                                                                 rk,
-                                                                 replyToDummy );
-                return corrId;
-            }
+            AEnvironmentRequest::m_correlationId = corrId;
+            const bool rt = networkClient->sendPackageAsync( _msg,
+                                                             corrId,
+                                                             routingTarget->targetExchangePointName,
+                                                             routingTarget->targetRoutingKeyName,
+                                                             replyTo );
+            return corrId;
         }
+        // replier
+        else{
+            const string & corrId = m_correlationId;
+            const string replyToDummy = "i_am_replier";
+            const string ep = replyTo.substr( 0, replyTo.find(AmqpClient::REPLY_TO_DELIMETER) );
+            const string rk = replyTo.substr( replyTo.find(AmqpClient::REPLY_TO_DELIMETER) + 1, replyTo.size() - replyTo.find(AmqpClient::REPLY_TO_DELIMETER) );
 
-        // TODO: what for ? ( response with same coor id ? )
-        const string corrId = ( m_correlationId.empty() ? common_utils::generateUniqueId() : _correlationId );
-
-        string replyTo;
-        if( routingTarget ){
-            replyTo = routingTarget->predatorExchangePointName + AmqpClient::REPLY_TO_DELIMETER + routingTarget->predatorRoutingKeyName;
+            const bool rt = networkClient->sendPackageAsync( _msg,
+                                                             corrId,
+                                                             ep,
+                                                             rk,
+                                                             replyToDummy );
+            return corrId;
         }
-
-        AEnvironmentRequest::m_correlationId = corrId;
-        const bool rt = networkClient->sendPackageAsync( _msg,
-                                                         corrId,
-                                                         routingTarget->targetExchangePointName,
-                                                         routingTarget->targetRoutingKeyName,
-                                                         replyTo );
-        if( ! rt ){
-            // TODO: doooo ?
-        }
-
-        return corrId;
     }
 
-    virtual bool checkResponseReadyness( const std::string & _correlationId ) override {
-        return networkClient->checkResponseReadyness( _correlationId );
+    virtual bool checkResponseReadyness() override {
+
+        if( (common_utils::getCurrentTimeMillisec() - AEnvironmentRequest::requestTimeMillisec) > networkClient->m_settings.deliveredMessageExpirationSec * 1000 ){
+            VS_LOG_WARN << PRINT_HEADER << " request timeouted, corr id [" << AEnvironmentRequest::m_correlationId << "]" << endl;
+            AEnvironmentRequest::timeouted = true;
+            networkClient->m_refusedMessages.insert( AEnvironmentRequest::m_correlationId );
+            AEnvironmentRequest::m_correlationId.clear();
+            return false;
+        }
+
+        return networkClient->checkResponseReadyness( AEnvironmentRequest::m_correlationId );
     }
 
-    virtual std::string getAsyncResponse( const std::string & _correlationId ) override {
+    virtual std::string getAsyncResponse() override {
+        const string out =  networkClient->getAsyncResponse( AEnvironmentRequest::m_correlationId );
         AEnvironmentRequest::m_correlationId.clear();
-        return networkClient->getAsyncResponse( _correlationId );
+        return out;
     }
 
     // blocked mode
@@ -434,8 +423,14 @@ void AmqpClient::poll(){
                     << endl;
 
         // response to async request
-        if( m_readyResponsesToAsyncMessages.find(corrId) != m_readyResponsesToAsyncMessages.end() ){
-            m_readyResponsesToAsyncMessages[ corrId ] = string( (char*)envelope.message.body.bytes, envelope.message.body.len );
+        if( m_readyResponsesToAsyncMessages.find(corrId) != m_readyResponsesToAsyncMessages.end() ){            
+            if( m_refusedMessages.find(corrId) == m_refusedMessages.end() ){
+                m_readyResponsesToAsyncMessages[ corrId ] = string( (char*)envelope.message.body.bytes, envelope.message.body.len );
+            }
+            else{
+                VS_LOG_WARN << PRINT_HEADER << " request corr id [" <<corrId << "] will be refused" << endl;
+                m_refusedMessages.erase( corrId );
+            }
         }
         // initiative from other side
         else{
@@ -581,8 +576,13 @@ std::string AmqpClient::sendPackageBlocked( const string & _msg,
     }
 
     // TODO: wait the same CorrId response by CV
+    // and delete from queue
 
     return m_readyResponsesToAsyncMessages[ _corrId ];
+}
+
+void AmqpClient::refuseFromResponse( const std::string & _corrId ){
+
 }
 
 bool AmqpClient::checkResponseReadyness( const std::string & _corrId ){
