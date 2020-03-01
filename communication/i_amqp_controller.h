@@ -22,7 +22,7 @@ public:
     bool init( const SInitSettings & _settings );
     const SState & getState(){ return m_state; }
 
-    PNetworkClient getOwnedClient(){ return m_client; }
+    PNetworkClient getOwnedClient(){ return m_state.settings.client; }
 
     // client itf
     virtual PEnvironmentRequest getRequestInstance() override;
@@ -43,7 +43,6 @@ private:
 
 
     // service
-    PNetworkClient m_client;
 
 
 

@@ -21,5 +21,5 @@ void ICommandExternal::sendResponse( const string & _outcomingMessage, void * _u
     // 3 objrepr sensor id
     // 4 ?
     m_request->setUserData( _userData );    
-    m_request->setOutcomingMessage( _outcomingMessage );
+    m_request->sendMessageAsync( _outcomingMessage, m_request->m_correlationId );
 }

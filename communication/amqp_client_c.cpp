@@ -103,14 +103,50 @@ public:
     // async mode
     virtual std::string sendMessageAsync( const std::string & _msg, const std::string & _correlationId = "" ) override {
 
-        // TODO: what for ?
-        const string corrId = ( _correlationId.empty() ? common_utils::generateUniqueId() : _correlationId );
+        {
+            // requester
+            if( AEnvironmentRequest::m_correlationId.empty() ){
+                const string corrId = common_utils::generateUniqueId();
+                const string replyTo = routingTarget->predatorExchangePointName + AmqpClient::REPLY_TO_DELIMETER + routingTarget->predatorRoutingKeyName;
+
+                AEnvironmentRequest::m_correlationId = corrId;
+                const bool rt = networkClient->sendPackageAsync( _msg,
+                                                                 corrId,
+                                                                 routingTarget->targetExchangePointName,
+                                                                 routingTarget->targetRoutingKeyName,
+                                                                 replyTo );
+                return corrId;
+            }
+            // replier
+            else{
+                const string & corrId = m_correlationId;
+                const string replyToDummy = "i_am_replier";
+                const string ep = replyTo.substr( 0, replyTo.find(AmqpClient::REPLY_TO_DELIMETER) );
+                const string rk = replyTo.substr( replyTo.find(AmqpClient::REPLY_TO_DELIMETER) + 1, replyTo.size() - replyTo.find(AmqpClient::REPLY_TO_DELIMETER) );
+
+                const bool rt = networkClient->sendPackageAsync( _msg,
+                                                                 corrId,
+                                                                 ep,
+                                                                 rk,
+                                                                 replyToDummy );
+                return corrId;
+            }
+        }
+
+        // TODO: what for ? ( response with same coor id ? )
+        const string corrId = ( m_correlationId.empty() ? common_utils::generateUniqueId() : _correlationId );
+
+        string replyTo;
+        if( routingTarget ){
+            replyTo = routingTarget->predatorExchangePointName + AmqpClient::REPLY_TO_DELIMETER + routingTarget->predatorRoutingKeyName;
+        }
 
         AEnvironmentRequest::m_correlationId = corrId;
         const bool rt = networkClient->sendPackageAsync( _msg,
                                                          corrId,
                                                          routingTarget->targetExchangePointName,
-                                                         routingTarget->targetRoutingKeyName );
+                                                         routingTarget->targetRoutingKeyName,
+                                                         replyTo );
         if( ! rt ){
             // TODO: do ?
         }
@@ -123,6 +159,7 @@ public:
     }
 
     virtual std::string getAsyncResponse( const std::string & _correlationId ) override {
+        AEnvironmentRequest::m_correlationId.clear();
         return networkClient->getAsyncResponse( _correlationId );
     }
 
@@ -130,11 +167,13 @@ public:
     virtual void setOutcomingMessage( const std::string & _msg ) override {
 
         const string corrId = common_utils::generateUniqueId();
+        const string replyTo = routingTarget->predatorExchangePointName + AmqpClient::REPLY_TO_DELIMETER + routingTarget->predatorRoutingKeyName;
 
         AEnvironmentRequest::m_incomingMessage = networkClient->sendPackageBlocked( _msg,
                                                                                     corrId,
                                                                                     routingTarget->targetExchangePointName,
-                                                                                    routingTarget->targetRoutingKeyName );
+                                                                                    routingTarget->targetRoutingKeyName,
+                                                                                    replyTo );
     }
 
     // user defined stuff
@@ -144,6 +183,7 @@ public:
 
     AmqpClient * networkClient;
     SAmqpRouteParameters * routingTarget;
+    std::string replyTo;
 };
 using PAmqpRequest = std::shared_ptr<AmqpRequest>;
 
@@ -348,6 +388,12 @@ bool AmqpClient::createMailbox( const string & _exchangePointName,
         return false;
     }
 
+    VS_LOG_INFO << PRINT_HEADER
+                << " starts consuming"
+                << " from Q [" << _queueName << "]"
+                << " connected to EP [" << _exchangePointName << "]"
+                << " by RK [" << _bindingKeyName << "]"
+                << endl;
     return true;
 }
 
@@ -373,10 +419,19 @@ void AmqpClient::poll(){
     amqp_rpc_reply_t ret = ::amqp_consume_message( m_connReceive, & envelope, & timeout, 0 );
 
     string corrId;
+    string replyTo;
 
     switch( ret.reply_type ){
     case AMQP_RESPONSE_NORMAL: {
         corrId.assign( (char*)envelope.message.properties.correlation_id.bytes, envelope.message.properties.correlation_id.len );
+        replyTo.assign( (char*)envelope.message.properties.reply_to.bytes, envelope.message.properties.reply_to.len );
+
+        VS_LOG_INFO << PRINT_HEADER
+                    << common_utils::getCurrentDateTimeStr()
+                    << " msg [" << string( (char*)envelope.message.body.bytes, envelope.message.body.len ) << "] consumed"
+                    << " reply to [" << replyTo << "]"
+                    << " corr id [" << corrId << "]"
+                    << endl;
 
         // response to async request
         if( m_readyResponsesToAsyncMessages.find(corrId) != m_readyResponsesToAsyncMessages.end() ){
@@ -385,9 +440,11 @@ void AmqpClient::poll(){
         // initiative from other side
         else{
             PAmqpRequest request = std::make_shared<AmqpRequest>();
+            request->networkClient = this;
             request->m_incomingMessage.assign( (char*)envelope.message.body.bytes, envelope.message.body.len );
             request->m_connectionId = INetworkEntity::getConnId();
             request->m_correlationId.assign( (char*)envelope.message.properties.correlation_id.bytes, envelope.message.properties.correlation_id.len );
+            request->replyTo = replyTo;
 
             for( INetworkObserver * observer : m_observers ){
                 observer->callbackNetworkRequest( request );
@@ -405,7 +462,7 @@ void AmqpClient::poll(){
         break;
     }
     case AMQP_RESPONSE_LIBRARY_EXCEPTION: {
-//        LOG_WARN << "library exception reply id: " << amqp_error_string2(ret.library_error) << endl;
+//        VS_LOG_WARN << PRINT_HEADER << " lib exception reply err [" << amqp_error_string2(ret.library_error) << "]" << endl;
         break;
     }
     default: {
@@ -429,7 +486,8 @@ PEnvironmentRequest AmqpClient::getRequestInstance(){
 bool AmqpClient::sendPackageAsync( const string & _msg,
                                    const string & _corrId,
                                    const std::string & _exchangeName,
-                                   const std::string & _routingName ){
+                                   const std::string & _routingName,
+                                   const std::string & _replyTo ){
 
     assert( ! _msg.empty() );
     assert( ! _corrId.empty() );
@@ -441,12 +499,13 @@ bool AmqpClient::sendPackageAsync( const string & _msg,
     // publish options
     constexpr amqp_channel_t channelId = 1;
     constexpr amqp_boolean_t mandatory = 1;
-    constexpr amqp_boolean_t immediate = 1;
+    constexpr amqp_boolean_t immediate = 0;
 
     // message options
     amqp_basic_properties_t_ props;
-    props._flags = AMQP_BASIC_CORRELATION_ID_FLAG;
+    props._flags = AMQP_BASIC_CORRELATION_ID_FLAG | AMQP_BASIC_REPLY_TO_FLAG;
     props.correlation_id = amqp_cstring_bytes( _corrId.c_str() );
+    props.reply_to = amqp_cstring_bytes( _replyTo.c_str() );
     props.expiration = amqp_cstring_bytes( m_msgExpirationMillisecStr.c_str() );
 
     // message itself
@@ -461,7 +520,7 @@ bool AmqpClient::sendPackageAsync( const string & _msg,
                                                                     amqp_cstring_bytes( _routingName.c_str() ),
                                                                     mandatory,
                                                                     immediate,
-                                                                    nullptr,
+                                                                    & props,
                                                                     message_bytes );
     if( publishStatus != AMQP_STATUS_OK ){
         VS_LOG_ERROR << PRINT_HEADER << " message publish failed, reason [" << amqpStatusStr( publishStatus ) << "]" << endl;
@@ -471,24 +530,35 @@ bool AmqpClient::sendPackageAsync( const string & _msg,
     //
     m_readyResponsesToAsyncMessages.insert( {_corrId, string()} );
 
+    VS_LOG_INFO << PRINT_HEADER
+                << common_utils::getCurrentDateTimeStr()
+                << " msg [" << _msg << "] published"
+                << " to EP [" << _exchangeName << "]"
+                << " with RK [" << _routingName << "]"
+                << " corr id [" << _corrId << "]"
+                << endl;
+
     return true;
 }
 
 std::string AmqpClient::sendPackageBlocked( const string & _msg,
                                             const std::string & _corrId,
                                             const std::string & _exchangeName,
-                                            const std::string & _routingName ){
+                                            const std::string & _routingName,
+                                            const std::string & _replyTo ){
 
     std::lock_guard<std::mutex> lock( m_muSendBlocked );
 
     // publish options
     constexpr amqp_channel_t channelId = 1;
     constexpr amqp_boolean_t mandatory = 1;
-    constexpr amqp_boolean_t immediate = 1;
+    constexpr amqp_boolean_t immediate = 0;
 
     // message options
     amqp_basic_properties_t_ props;
+    props._flags = AMQP_BASIC_CORRELATION_ID_FLAG | AMQP_BASIC_REPLY_TO_FLAG;
     props.correlation_id = amqp_cstring_bytes( _corrId.c_str() );
+    props.reply_to = amqp_cstring_bytes( _replyTo.c_str() );
     props.expiration = amqp_cstring_bytes( m_msgExpirationMillisecStr.c_str() );
 
     // message itself
@@ -503,7 +573,7 @@ std::string AmqpClient::sendPackageBlocked( const string & _msg,
                                                                     amqp_cstring_bytes( _routingName.c_str() ),
                                                                     mandatory,
                                                                     immediate,
-                                                                    nullptr,
+                                                                    & props,
                                                                     message_bytes );
     if( publishStatus != AMQP_STATUS_OK ){
         VS_LOG_ERROR << PRINT_HEADER << " message publish failed, reason [" << amqpStatusStr( publishStatus ) << "]" << endl;
@@ -526,7 +596,9 @@ std::string AmqpClient::getAsyncResponse( const std::string & _corrId ){
 
     assert( m_readyResponsesToAsyncMessages.find(_corrId) != m_readyResponsesToAsyncMessages.end() );
 
-    return m_readyResponsesToAsyncMessages[ _corrId ];
+    const string out = m_readyResponsesToAsyncMessages[ _corrId ];
+    m_readyResponsesToAsyncMessages.erase( _corrId );
+    return out;
 }
 
 

@@ -23,7 +23,6 @@ public:
             , port(0)
         {}
         bool enable;
-        std::string clientName;
         std::string host;
         std::string virtHost;
         int port;
@@ -92,11 +91,13 @@ public:
             : asyncNetwork(false)
             , pollTimeoutMillisec(0)
         {}
+        // configured by client code
         mutable std::vector<PEnvironmentRequest> requestsFromWAL;
         mutable std::vector<PEnvironmentRequest> requestsFromConfig;
         bool asyncNetwork;
         int32_t pollTimeoutMillisec;
 
+        // configured by derived class
         SConnectParamsAmqp paramsForInitialAmqp;
         SConnectParamsShell paramsForInitialShell;
         SConnectParamsHTTPClient paramsForInitialHTTPClient;

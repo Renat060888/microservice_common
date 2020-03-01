@@ -16,10 +16,12 @@
 
 #include "network_interface.h"
 
-class AmqpClient : public INetworkProvider, public INetworkClient {
+class AmqpClient : public INetworkProvider, public INetworkClient
+{
     friend class AmqpRequest;
-public:    
     static constexpr int DEFAULT_AMQP_PORT = 5672;
+public:    
+    static constexpr const char REPLY_TO_DELIMETER = '%';
 
     enum class EExchangeType {
         DIRECT      = 0x00,
@@ -73,7 +75,8 @@ private:
     std::string sendPackageBlocked( const std::string & _msg,
                                     const std::string & _corrId,
                                     const std::string & _exchangeName,
-                                    const std::string & _routingName );
+                                    const std::string & _routingName,
+                                    const std::string & _replyTo );
 
     // async
     bool checkResponseReadyness( const std::string & _corrId );
@@ -81,7 +84,8 @@ private:
     bool sendPackageAsync( const std::string & _msg,
                            const std::string & _corrId,
                            const std::string & _exchangeName,
-                           const std::string & _routingName );
+                           const std::string & _routingName,
+                           const std::string & _replyTo );
 
     void threadReceiveLoop();
     void poll();

@@ -6,7 +6,7 @@
 #include "system/logger.h"
 #include "common/ms_common_vars.h"
 #include "common/ms_common_utils.h"
-#include "database_manager_astra.h"
+#include "database_manager_base.h"
 
 using namespace std;
 using namespace common_vars;

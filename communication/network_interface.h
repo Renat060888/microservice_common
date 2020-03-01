@@ -75,12 +75,7 @@ using PNetworkEntity = std::shared_ptr<INetworkEntity>;
 // ------------------------------------
 class AEnvironmentRequest {
 public:
-    enum EPriority {
-        PRIMARY,
-        SECONDARY,
-        UNDEFINED
-    };
-
+    // TODO: do ?
     enum EFlags : uint8_t {
         F_NEED_RESPONSE = 0x01,
         F_ASYNC_REQUEST = 0x02,
@@ -93,52 +88,43 @@ public:
         F_RESERVE_4 = 0x80
     };
 
-    AEnvironmentRequest()
-        : m_connectionId(0)
-        , m_asyncRequestId(0)
-        , m_asyncRequest(false)
-        , m_notifyAboutAsyncViaCallback(false)
-        , m_responseCatched(false)
-        , m_flags(0)
-    {}
-
-    const std::string & getIncomingMessage(){ return m_incomingMessage; }
-    // TODO: may be remove 'bool _success' ?
-    virtual void setOutcomingMessage( const std::string & _msg ) = 0;
-    virtual void setOutcomingMessage( const char * _bytes, int _bytesLen ) { assert( false && "not implemented in derived class" ); }
-
-    virtual void setUserData( void * /*_data*/ ){ return; }
-    virtual void * getUserData(){ return nullptr; }
-
     uint8_t getFlags(){ return m_flags; }
     void setFlags( uint8_t _flags ){ m_flags = _flags; }
 
-    void setPriority( EPriority _prio ){ m_priority = _prio; }
-    void setAsyncMode( bool _async ){ m_asyncRequest = _async; }
+    uint8_t m_flags;
 
+    AEnvironmentRequest()
+        : m_connectionId(0)
+        , m_asyncRequest(false)
+        , m_notifyAboutAsyncViaCallback(false)
+        , m_flags(0)
+    {}
+
+    // sync payload
+    const std::string & getIncomingMessage(){ return m_incomingMessage; }
+
+    virtual void setOutcomingMessage( const std::string & _msg ) = 0;
+    virtual void setOutcomingMessage( const char * _bytes, int _bytesLen ) { assert( false && "not implemented in derived class" ); }
+
+    // async payload
     virtual std::string sendMessageAsync( const std::string & _msg, const std::string & _correlationId = "" ){ assert( false && "not implemented in derived class" ); }
     virtual bool checkResponseReadyness( const std::string & _correlationId ){ assert( false && "not implemented in derived class" ); }
     virtual std::string getAsyncResponse( const std::string & _correlationId ){ assert( false && "not implemented in derived class" ); }
 
+    // service
     INetworkEntity::TConnectionId getConnId(){ return m_connectionId; }
+    virtual void setUserData( void * /*_data*/ ){ return; }
+    virtual void * getUserData(){ return nullptr; }
 
-    // ------------------ TODO: to private/protected ------------------
 
-    // header to network facility
-    SNetworkPackage m_netPack;
-    // payload
-    std::string m_incomingMessage;
-    // to endpoint
-    TAsyncRequestId m_asyncRequestId;
-    // inside in the system
-    bool m_asyncRequest;
+    // TODO: to private/protected
+
+    // TODO: deprecated
+    bool m_asyncRequest;   
     bool m_notifyAboutAsyncViaCallback;
-    std::atomic<bool> m_responseCatched;
-    uint8_t m_flags;
-    EPriority m_priority;
 
-    // TODO: refactored section
     INetworkEntity::TConnectionId m_connectionId;
+    std::string m_incomingMessage;
     TCorrelationId m_correlationId;
 
 
