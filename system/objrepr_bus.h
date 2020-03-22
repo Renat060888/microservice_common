@@ -6,7 +6,7 @@
 #include <string>
 #include <future>
 
-#include <microservice_common/common/ms_common_types.h>
+#include "common/ms_common_types.h"
 
 class ObjreprBus
 {

@@ -98,8 +98,8 @@ public:
         , m_asyncRequest(false)
         , m_notifyAboutAsyncViaCallback(false)
         , m_flags(0)
-        , timeouted(false)
-        , requestTimeMillisec(0)
+        , m_timeouted(false)
+        , m_requestTimeMillisec(0)
     {}
 
     // sync payload
@@ -112,7 +112,7 @@ public:
     virtual std::string sendMessageAsync( const std::string & _msg, const std::string & _correlationId = "" ){ assert( false && "not implemented in derived class" ); }
     virtual bool checkResponseReadyness(){ assert( false && "not implemented in derived class" ); }
     virtual std::string getAsyncResponse(){ assert( false && "not implemented in derived class" ); }
-    bool isTimeouted(){ return timeouted; }
+    bool isTimeouted(){ return m_timeouted; }
     bool isPerforming(){ return ! m_correlationId.empty(); }
 
     // service
@@ -131,8 +131,8 @@ public:
     std::string m_incomingMessage;
 
     TCorrelationId m_correlationId;
-    bool timeouted;
-    int64_t requestTimeMillisec;
+    bool m_timeouted;
+    int64_t m_requestTimeMillisec;
 
 
 protected:

@@ -3,11 +3,9 @@
 #include <objrepr/reprServer.h>
 #endif
 
-#include <microservice_common/common/ms_common_utils.h>
-#include <microservice_common/system/logger.h>
+#include "common/ms_common_utils.h"
+#include "system/logger.h"
 
-#include "common/common_vars.h"
-#include "config_reader.h"
 #include "objrepr_bus.h"
 
 using namespace std;

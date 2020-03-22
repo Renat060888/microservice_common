@@ -18,6 +18,7 @@ bool DatabaseManager::m_systemInited = false;
 int DatabaseManager::m_instanceCounter = 0;
 const std::string DatabaseManager::ALL_CLIENT_OPERATIONS = "";
 const common_types::TPid DatabaseManager::ALL_PROCESS_EVENTS = 0;
+const std::string DatabaseManager::ALL_REGISTRATION_IDS = "";
 
 DatabaseManager::DatabaseManager()
     : m_mongoClient(nullptr)
@@ -499,6 +500,20 @@ void DatabaseManager::removeProcessEvent( common_types::TPid _pid ){
 
     bson_destroy( query );
 }
+
+bool DatabaseManager::writeUserRegistration( const common_types::SWALUserRegistration & _registration ){
+
+}
+
+std::vector<common_types::SWALUserRegistration> DatabaseManager::getUserRegistrations(){
+
+}
+
+void DatabaseManager::removeUserRegistration( std::string _registrationId ){
+
+}
+
+
 
 
 

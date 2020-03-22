@@ -3,10 +3,9 @@
 
 #include <unordered_map>
 
-#include <microservice_common/system/wal.h>
-#include <microservice_common/storage/database_manager_base.h>
-
-#include "common/common_types.h"
+#include "system/wal.h"
+#include "storage/database_manager_base.h"
+#include "common/ms_common_types.h"
 
 class SystemEnvironment : public common_types::IWALPersistenceService
 {
@@ -19,6 +18,12 @@ public:
     struct SInitSettings {
         SInitSettings()
         {}
+
+        std::string databaseHost;
+        std::string databaseName;
+        bool restoreSystemAfterInterrupt;
+        std::string uniqueLockFileFullPath;
+
         SServiceLocator services;
     };
 
@@ -37,6 +42,12 @@ public:
     bool closeContext();
 
     WriteAheadLogger * serviceForWriteAheadLogging();
+    // TODO: move here system monitor & path locator ?
+
+
+protected:
+    virtual bool initDerive(){ return true; }
+
 
 private:
     bool isApplicationInstanceUnique();

@@ -9,7 +9,7 @@
 
 #include "i_command.h"
 #include "i_command_factory.h"
-#include "i_amqp_controller.h"
+#include "amqp_controller.h"
 #include "network_interface.h"
 #include "common/ms_common_types.h"
 

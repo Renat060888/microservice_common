@@ -85,11 +85,6 @@ static inline string amqpStrError( const amqp_rpc_reply_t ret ){
     }
 }
 
-void checkResult( amqp_connection_state_t _conn, const string & _command ){
-
-    // TODO: do ?
-}
-
 // -----------------------------------------------------------------------------
 // request override
 // -----------------------------------------------------------------------------
@@ -105,17 +100,16 @@ public:
 
         // requester
         if( AEnvironmentRequest::m_correlationId.empty() ){
-            AEnvironmentRequest::requestTimeMillisec = common_utils::getCurrentTimeMillisec();
-            const string corrId = common_utils::generateUniqueId();
+            AEnvironmentRequest::m_requestTimeMillisec = common_utils::getCurrentTimeMillisec();
+            AEnvironmentRequest::m_correlationId = common_utils::generateUniqueId();
             const string replyTo = routingTarget->predatorExchangePointName + AmqpClient::REPLY_TO_DELIMETER + routingTarget->predatorRoutingKeyName;
 
-            AEnvironmentRequest::m_correlationId = corrId;
             const bool rt = networkClient->sendPackageAsync( _msg,
-                                                             corrId,
+                                                             AEnvironmentRequest::m_correlationId,
                                                              routingTarget->targetExchangePointName,
                                                              routingTarget->targetRoutingKeyName,
                                                              replyTo );
-            return corrId;
+            return AEnvironmentRequest::m_correlationId;
         }
         // replier
         else{
@@ -135,9 +129,9 @@ public:
 
     virtual bool checkResponseReadyness() override {
 
-        if( (common_utils::getCurrentTimeMillisec() - AEnvironmentRequest::requestTimeMillisec) > networkClient->m_settings.deliveredMessageExpirationSec * 1000 ){
+        if( (common_utils::getCurrentTimeMillisec() - AEnvironmentRequest::m_requestTimeMillisec) > networkClient->m_state.settings.deliveredMessageExpirationSec * 1000 ){
             VS_LOG_WARN << PRINT_HEADER << " request timeouted, corr id [" << AEnvironmentRequest::m_correlationId << "]" << endl;
-            AEnvironmentRequest::timeouted = true;
+            AEnvironmentRequest::m_timeouted = true;
             networkClient->m_refusedMessages.insert( AEnvironmentRequest::m_correlationId );
             AEnvironmentRequest::m_correlationId.clear();
             return false;
@@ -154,7 +148,6 @@ public:
 
     // blocked mode
     virtual void setOutcomingMessage( const std::string & _msg ) override {
-
         const string corrId = common_utils::generateUniqueId();
         const string replyTo = routingTarget->predatorExchangePointName + AmqpClient::REPLY_TO_DELIMETER + routingTarget->predatorRoutingKeyName;
 
@@ -197,7 +190,7 @@ AmqpClient::~AmqpClient(){
 
 bool AmqpClient::init( const SInitSettings & _settings ){
 
-    m_settings = _settings;
+    m_state.settings = _settings;
     m_msgExpirationMillisecStr = std::to_string( _settings.deliveredMessageExpirationSec * 1000 );
 
     // init amqp
@@ -232,7 +225,7 @@ bool AmqpClient::init( const SInitSettings & _settings ){
 
 void AmqpClient::setPollTimeout( int32_t _timeoutMillsec ){
 
-    m_settings.serverPollTimeoutMillisec = _timeoutMillsec;
+    m_state.settings.serverPollTimeoutMillisec = _timeoutMillsec;
 }
 
 void AmqpClient::addObserver( INetworkObserver * _observer ){
@@ -273,13 +266,13 @@ bool AmqpClient::initLowLevel( amqp_connection_state_t & _connection, const SIni
     // socket
     amqp_socket_t * socket = ::amqp_tcp_socket_new( _connection );
     if( ! socket ){
-        m_lastError = "AMQP socket creation failed";
+        m_state.m_lastError = "AMQP socket creation failed";
         return false;
     }
 
     const int status = ::amqp_socket_open( socket, host, port );
     if( status != AMQP_STATUS_OK ){
-        m_lastError = ( boost::format( "AMQP socket open failed: %1%" ) % strerror(errno) ).str();
+        m_state.m_lastError = ( boost::format( "AMQP socket open failed: %1%" ) % strerror(errno) ).str();
         VS_LOG_ERROR << "NETWORK AMQP-C CLIENT SOCKET OPEN ERROR: " << amqpStatusStr( status ) << endl;
         return false;
     }
@@ -287,7 +280,7 @@ bool AmqpClient::initLowLevel( amqp_connection_state_t & _connection, const SIni
     // authorize
     amqp_rpc_reply_t ret = ::amqp_login( _connection, vhost, 0, AMQP_DEFAULT_FRAME_SIZE, 0, AMQP_SASL_METHOD_PLAIN, login, pass );
     if( ret.reply_type != AMQP_RESPONSE_NORMAL ){
-        m_lastError = ( boost::format( "AMQP login failed: %1%" ) % amqpStrError(ret) ).str();
+        m_state.m_lastError = ( boost::format( "AMQP login failed: %1%" ) % amqpStrError(ret) ).str();
         return false;
     }
 
@@ -295,7 +288,7 @@ bool AmqpClient::initLowLevel( amqp_connection_state_t & _connection, const SIni
     amqp_channel_open_ok_t * rt = ::amqp_channel_open( _connection, 1 );
     ret = amqp_get_rpc_reply( _connection );
     if( ret.reply_type != AMQP_RESPONSE_NORMAL ){
-        m_lastError = ( boost::format( "AMQP channel (SEND) creation failed: %1%" ) % amqpStrError(ret) ).str();
+        m_state.m_lastError = ( boost::format( "AMQP channel (SEND) creation failed: %1%" ) % amqpStrError(ret) ).str();
         return false;
     }
 
@@ -315,7 +308,7 @@ bool AmqpClient::createExchangePoint( const std::string & _exchangePointName, EE
 
     amqp_rpc_reply_t ret = ::amqp_get_rpc_reply( m_connReceive );
     if( ret.reply_type != AMQP_RESPONSE_NORMAL ){
-        m_lastError = ( boost::format( "AMQP exchange creation failed: %1%" ) % amqpStrError(ret) ).str();
+        m_state.m_lastError = ( boost::format( "AMQP exchange creation failed: %1%" ) % amqpStrError(ret) ).str();
         return false;
     }
 
@@ -324,7 +317,8 @@ bool AmqpClient::createExchangePoint( const std::string & _exchangePointName, EE
 
 bool AmqpClient::createMailbox( const string & _exchangePointName,
                                 const string & _queueName,
-                                const string _bindingKeyName ){
+                                const string _bindingKeyName,
+                                bool _startConsume ){
     // queue
     amqp_boolean_t passive = 0;
     amqp_boolean_t durable = 0;
@@ -343,7 +337,7 @@ bool AmqpClient::createMailbox( const string & _exchangePointName,
 
     amqp_rpc_reply_t ret = ::amqp_get_rpc_reply( m_connReceive );
     if( ret.reply_type != AMQP_RESPONSE_NORMAL ){
-        m_lastError = ( boost::format( "AMQP queue creation failed: %1%" ) % amqpStrError(ret) ).str();
+        m_state.m_lastError = ( boost::format( "AMQP queue creation failed: %1%" ) % amqpStrError(ret) ).str();
         return false;
     }
 
@@ -357,32 +351,42 @@ bool AmqpClient::createMailbox( const string & _exchangePointName,
 
     ret = ::amqp_get_rpc_reply( m_connReceive );
     if( ret.reply_type != AMQP_RESPONSE_NORMAL ){
-        m_lastError = ( boost::format( "AMQP queue bind failed: %1%" ) % amqpStrError(ret) ).str();
+        m_state.m_lastError = ( boost::format( "AMQP queue bind failed: %1%" ) % amqpStrError(ret) ).str();
         return false;
     }
 
     // subscribe
-    amqp_basic_consume_ok_t_ * consumeOk = ::amqp_basic_consume( m_connReceive,
-                                                               1,
-                                                               amqp_cstring_bytes(_queueName.c_str()),
-                                                               amqp_empty_bytes,
-                                                               0,
-                                                               1,
-                                                               0,
-                                                               amqp_empty_table );
+    if( _startConsume ){
+        amqp_basic_consume_ok_t_ * consumeOk = ::amqp_basic_consume( m_connReceive,
+                                                                   1,
+                                                                   amqp_cstring_bytes(_queueName.c_str()),
+                                                                   amqp_empty_bytes,
+                                                                   0,
+                                                                   1,
+                                                                   0,
+                                                                   amqp_empty_table );
 
-    ret = ::amqp_get_rpc_reply( m_connReceive );
-    if( ret.reply_type != AMQP_RESPONSE_NORMAL ){
-        m_lastError = ( boost::format( "AMQP basic consume failed: %1%" ) % amqpStrError(ret) ).str();
-        return false;
+        ret = ::amqp_get_rpc_reply( m_connReceive );
+        if( ret.reply_type != AMQP_RESPONSE_NORMAL ){
+            m_state.m_lastError = ( boost::format( "AMQP basic consume failed: %1%" ) % amqpStrError(ret) ).str();
+            return false;
+        }
+
+        VS_LOG_INFO << PRINT_HEADER
+                    << " starts consuming"
+                    << " from Q [" << _queueName << "]"
+                    << " connected to EP [" << _exchangePointName << "]"
+                    << " by RK [" << _bindingKeyName << "]"
+                    << endl;
+    }
+    else{
+        VS_LOG_INFO << PRINT_HEADER
+                    << " new Q [" << _queueName << "]"
+                    << " connected to EP [" << _exchangePointName << "]"
+                    << " by RK [" << _bindingKeyName << "]"
+                    << endl;
     }
 
-    VS_LOG_INFO << PRINT_HEADER
-                << " starts consuming"
-                << " from Q [" << _queueName << "]"
-                << " connected to EP [" << _exchangePointName << "]"
-                << " by RK [" << _bindingKeyName << "]"
-                << endl;
     return true;
 }
 
@@ -402,7 +406,7 @@ void AmqpClient::poll(){
 
     timeval timeout;
     timeout.tv_sec = 0;
-    timeout.tv_usec = m_settings.serverPollTimeoutMillisec * 1000;
+    timeout.tv_usec = m_state.settings.serverPollTimeoutMillisec * 1000;
 
     amqp_envelope_t envelope;
     amqp_rpc_reply_t ret = ::amqp_consume_message( m_connReceive, & envelope, & timeout, 0 );
@@ -415,14 +419,14 @@ void AmqpClient::poll(){
         corrId.assign( (char*)envelope.message.properties.correlation_id.bytes, envelope.message.properties.correlation_id.len );
         replyTo.assign( (char*)envelope.message.properties.reply_to.bytes, envelope.message.properties.reply_to.len );
 
-        VS_LOG_INFO << PRINT_HEADER
-                    << common_utils::getCurrentDateTimeStr()
-                    << " msg [" << string( (char*)envelope.message.body.bytes, envelope.message.body.len ) << "] consumed"
-                    << " reply to [" << replyTo << "]"
-                    << " corr id [" << corrId << "]"
-                    << endl;
+//        VS_LOG_INFO << PRINT_HEADER
+//                    << common_utils::getCurrentDateTimeStr()
+//                    << " msg [" << string( (char*)envelope.message.body.bytes, envelope.message.body.len ) << "] consumed"
+//                    << " reply to [" << replyTo << "]"
+//                    << " corr id [" << corrId << "]"
+//                    << endl;
 
-        // response to async request
+        // (catched by client) response to async request
         if( m_readyResponsesToAsyncMessages.find(corrId) != m_readyResponsesToAsyncMessages.end() ){            
             if( m_refusedMessages.find(corrId) == m_refusedMessages.end() ){
                 m_readyResponsesToAsyncMessages[ corrId ] = string( (char*)envelope.message.body.bytes, envelope.message.body.len );
@@ -432,12 +436,12 @@ void AmqpClient::poll(){
                 m_refusedMessages.erase( corrId );
             }
         }
-        // initiative from other side
+        // (catched by server) initiative from other side
         else{
             PAmqpRequest request = std::make_shared<AmqpRequest>();
             request->networkClient = this;
-            request->m_incomingMessage.assign( (char*)envelope.message.body.bytes, envelope.message.body.len );
             request->m_connectionId = INetworkEntity::getConnId();
+            request->m_incomingMessage.assign( (char*)envelope.message.body.bytes, envelope.message.body.len );
             request->m_correlationId.assign( (char*)envelope.message.properties.correlation_id.bytes, envelope.message.properties.correlation_id.len );
             request->replyTo = replyTo;
 
@@ -498,7 +502,7 @@ bool AmqpClient::sendPackageAsync( const string & _msg,
 
     // message options
     amqp_basic_properties_t_ props;
-    props._flags = AMQP_BASIC_CORRELATION_ID_FLAG | AMQP_BASIC_REPLY_TO_FLAG;
+    props._flags = AMQP_BASIC_CORRELATION_ID_FLAG | AMQP_BASIC_REPLY_TO_FLAG | AMQP_BASIC_EXPIRATION_FLAG;
     props.correlation_id = amqp_cstring_bytes( _corrId.c_str() );
     props.reply_to = amqp_cstring_bytes( _replyTo.c_str() );
     props.expiration = amqp_cstring_bytes( m_msgExpirationMillisecStr.c_str() );
@@ -525,13 +529,13 @@ bool AmqpClient::sendPackageAsync( const string & _msg,
     //
     m_readyResponsesToAsyncMessages.insert( {_corrId, string()} );
 
-    VS_LOG_INFO << PRINT_HEADER
-                << common_utils::getCurrentDateTimeStr()
-                << " msg [" << _msg << "] published"
-                << " to EP [" << _exchangeName << "]"
-                << " with RK [" << _routingName << "]"
-                << " corr id [" << _corrId << "]"
-                << endl;
+//    VS_LOG_INFO << PRINT_HEADER
+//                << common_utils::getCurrentDateTimeStr()
+//                << " msg [" << _msg << "] published"
+//                << " to EP [" << _exchangeName << "]"
+//                << " with RK [" << _routingName << "]"
+//                << " corr id [" << _corrId << "]"
+//                << endl;
 
     return true;
 }
@@ -551,7 +555,7 @@ std::string AmqpClient::sendPackageBlocked( const string & _msg,
 
     // message options
     amqp_basic_properties_t_ props;
-    props._flags = AMQP_BASIC_CORRELATION_ID_FLAG | AMQP_BASIC_REPLY_TO_FLAG;
+    props._flags = AMQP_BASIC_CORRELATION_ID_FLAG | AMQP_BASIC_REPLY_TO_FLAG | AMQP_BASIC_EXPIRATION_FLAG;
     props.correlation_id = amqp_cstring_bytes( _corrId.c_str() );
     props.reply_to = amqp_cstring_bytes( _replyTo.c_str() );
     props.expiration = amqp_cstring_bytes( m_msgExpirationMillisecStr.c_str() );

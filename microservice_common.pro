@@ -42,9 +42,9 @@ SOURCES += \
         common/error_entity.cpp \
         common/ms_common_types.cpp \
         communication/amqp_client_c.cpp \
+        communication/amqp_controller.cpp \
         communication/communication_gateway.cpp \
         communication/http_client.cpp \
-        communication/i_amqp_controller.cpp \
         communication/i_command.cpp \
         communication/i_command_external.cpp \
         communication/i_command_factory.cpp \
@@ -64,7 +64,9 @@ SOURCES += \
         system/logger_normal.cpp \
         system/logger_simple.cpp \
         system/object_pool.cpp \
+        system/objrepr_bus.cpp \
         system/process_launcher.cpp \
+        system/system_environment.cpp \
         system/system_monitor.cpp \
         system/thread_pool.cpp \
         system/threaded_multitask_service.cpp \
@@ -82,9 +84,9 @@ HEADERS += \
     common/ms_common_utils.h \
     common/ms_common_vars.h \
     communication/amqp_client_c.h \
+    communication/amqp_controller.h \
     communication/communication_gateway.h \
     communication/http_client.h \
-    communication/i_amqp_controller.h \
     communication/i_command.h \
     communication/i_command_external.h \
     communication/i_command_factory.h \
@@ -95,6 +97,7 @@ HEADERS += \
     communication/unified_command_convertor.h \
     communication/webserver.h \
     communication/websocket_server.h \
+    datasource/dummy.h \
     storage/database_manager_base.h \
     system/a_args_parser.h \
     system/a_config_reader.h \
@@ -107,7 +110,9 @@ HEADERS += \
     system/logger_normal.h \
     system/logger_simple.h \
     system/object_pool.h \
+    system/objrepr_bus.h \
     system/process_launcher.h \
+    system/system_environment.h \
     system/system_monitor.h \
     system/thread_pool.h \
     system/thread_pool_task.h \

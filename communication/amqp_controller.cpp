@@ -1,6 +1,6 @@
 
 #include "amqp_client_c.h"
-#include "i_amqp_controller.h"
+#include "amqp_controller.h"
 
 using namespace std;
 
@@ -23,6 +23,9 @@ bool AmqpController::init( const SInitSettings & _settings ){
     if( ! configureRoute(_settings) ){
         return false;
     }
+
+
+
 
 
     return true;
@@ -48,7 +51,7 @@ bool AmqpController::configureRoute( const SInitSettings & _settings ){
     const bool rt3 = originalClient->createExchangePoint( _settings.route.predatorExchangePointName,
                                                           AmqpClient::EExchangeType::DIRECT );
     if( ! rt3 ){
-        m_state.lastError = originalClient->getLastError();
+        m_state.lastError = originalClient->getState().m_lastError;
         return false;
     }
 
@@ -56,7 +59,7 @@ bool AmqpController::configureRoute( const SInitSettings & _settings ){
                                                     _settings.route.predatorQueueName,
                                                     _settings.route.predatorRoutingKeyName );
     if( ! rt4 ){
-        m_state.lastError = originalClient->getLastError();
+        m_state.lastError = originalClient->getState().m_lastError;
         return false;
     }
 
@@ -67,16 +70,17 @@ bool AmqpController::configureRoute( const SInitSettings & _settings ){
         const bool rt = originalClient->createExchangePoint( _settings.route.targetExchangePointName,
                                                              AmqpClient::EExchangeType::DIRECT );
         if( ! rt ){
-            m_state.lastError = originalClient->getLastError();
+            m_state.lastError = originalClient->getState().m_lastError;
             return false;
         }
 
-        // TODO: does the sender have the right to create recepient 'mailbox' ?
-//        const bool rt2 = originalClient->createMailbox( _settings.route.targetExchangePointName,
+        // NOTE: queue with routing key target must create itself
+//        const bool rt4 = originalClient->createMailbox( _settings.route.targetExchangePointName,
 //                                                        _settings.route.targetQueueName,
-//                                                        _settings.route.targetRoutingKeyName );
-//        if( ! rt2 ){
-//            m_state.lastError = originalClient->getLastError();
+//                                                        _settings.route.targetRoutingKeyName,
+//                                                        false );
+//        if( ! rt4 ){
+//            m_state.lastError = originalClient->getState().m_lastError;
 //            return false;
 //        }
     }

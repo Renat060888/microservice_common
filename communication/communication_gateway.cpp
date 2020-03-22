@@ -161,7 +161,7 @@ bool CommunicationGatewayFacade::initialConnections( const SInitSettings & _sett
 
         PAmqpClient amqpClient = std::make_shared<AmqpClient>( getConnectionId() );
         if( ! amqpClient->init( settings ) ){
-            VS_LOG_ERROR << "network amqp-client init fail: " << amqpClient->getLastError() << endl;
+            VS_LOG_ERROR << "network amqp-client init fail: " << amqpClient->getState().m_lastError << endl;
             return false;
         }
 

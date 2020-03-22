@@ -2,15 +2,11 @@
 #include <iostream>
 #include <sys/stat.h>
 
-#include <microservice_common/common/ms_common_utils.h>
-#include <microservice_common/system/logger.h>
-#include <microservice_common/system/process_launcher.h>
-#include <microservice_common/system/objrepr_bus.h>
-
+#include "common/ms_common_utils.h"
+#include "logger.h"
+#include "process_launcher.h"
+#include "objrepr_bus.h"
 #include "system_environment.h"
-#include "config_reader.h"
-#include "args_parser.h"
-#include "path_locator.h"
 
 using namespace std;
 
@@ -50,8 +46,8 @@ bool SystemEnvironment::init( SInitSettings _settings ){
     }    
 
     DatabaseManager::SInitSettings settings3;
-    settings3.host = CONFIG_PARAMS.MONGO_DB_ADDRESS;
-    settings3.databaseName = CONFIG_PARAMS.MONGO_DB_NAME;
+    settings3.host = _settings.databaseHost;
+    settings3.databaseName = _settings.databaseName;
 
     m_database = DatabaseManager::getInstance();
     if( ! m_database->init(settings3) ){
@@ -59,14 +55,14 @@ bool SystemEnvironment::init( SInitSettings _settings ){
     }
 
     WriteAheadLogger::SInitSettings settings2;
-    settings2.active = CONFIG_PARAMS.SYSTEM_RESTORE_INTERRUPTED_SESSION;
+    settings2.active = _settings.restoreSystemAfterInterrupt;
     settings2.persistService = this;
 
     if( ! m_wal.init(settings2) ){
         return false;
     }
 
-    if( ! CONFIG_PARAMS.SYSTEM_RESTORE_INTERRUPTED_SESSION ){
+    if( ! _settings.restoreSystemAfterInterrupt ){
         m_wal.cleanJournal();
     }
 
@@ -76,6 +72,10 @@ bool SystemEnvironment::init( SInitSettings _settings ){
     }
 
     writePidFile();
+
+    if( ! initDerive() ){
+        return false;
+    }
 
     VS_LOG_INFO << PRINT_HEADER << " init success" << endl;
     return true;
@@ -88,13 +88,13 @@ WriteAheadLogger * SystemEnvironment::serviceForWriteAheadLogging(){
 
 bool SystemEnvironment::isApplicationInstanceUnique(){
 
-    const int pidFile = ::open( PATH_LOCATOR.getUniqueLockFile().c_str(), O_CREAT | O_RDWR | O_TRUNC, 0666 );
+    const int pidFile = ::open( m_state.settings.uniqueLockFileFullPath.c_str(), O_CREAT | O_RDWR | O_TRUNC, 0666 );
 
     const int rc = ::flock( pidFile, LOCK_EX | LOCK_NB );
     if( rc ){
         if( EWOULDBLOCK == errno ){
             VS_LOG_ERROR << "CRITICAL: another instance of Video Server already is running."
-                      << " (file already locked: " << PATH_LOCATOR.getUniqueLockFile() << ")"
+                      << " (file already locked: " << m_state.settings.uniqueLockFileFullPath << ")"
                       << " Abort"
                       << endl;
             return false;
@@ -108,10 +108,10 @@ void SystemEnvironment::writePidFile(){
 
     const char * pidStr = std::to_string( ::getpid() ).c_str();
     VS_LOG_INFO << "write pid [" << pidStr << "]"
-             << " to pid file [" << PATH_LOCATOR.getUniqueLockFile() << "]"
+             << " to pid file [" << m_state.settings.uniqueLockFileFullPath << "]"
              << endl;
 
-    ofstream pidFile( PATH_LOCATOR.getUniqueLockFile(), std::ios::out | std::ios::trunc );
+    ofstream pidFile( m_state.settings.uniqueLockFileFullPath, std::ios::out | std::ios::trunc );
     if( ! pidFile.is_open() ){
         VS_LOG_ERROR << "cannot open pid file for write" << endl;
     }

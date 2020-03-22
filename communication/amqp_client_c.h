@@ -39,7 +39,7 @@ public:
             , login("guest")
             , pass("guest")
             , serverPollTimeoutMillisec(10)
-            , deliveredMessageExpirationSec( 30 )
+            , deliveredMessageExpirationSec(30)
         {}
 
         bool asyncMode;
@@ -52,13 +52,21 @@ public:
         int32_t deliveredMessageExpirationSec;
     };
 
+    struct SState {
+        SInitSettings settings;
+        std::string m_lastError;
+    };
+
     AmqpClient( INetworkEntity::TConnectionId _id );
     ~AmqpClient();
 
     bool init( const SInitSettings & _params );
-    const std::string & getLastError() { return m_lastError; }
+    const SState & getState() { return m_state; }
     bool createExchangePoint( const std::string & _exchangePointName, EExchangeType _exchangePointType );
-    bool createMailbox( const std::string & _exchangePointName, const std::string & _queueName, const std::string _bindingKeyName = "" );
+    bool createMailbox( const std::string & _exchangePointName,
+                        const std::string & _queueName,
+                        const std::string _bindingKeyName = "",
+                        bool _startConsume = true );
 
     // server part
     virtual void setPollTimeout( int32_t _timeoutMillsec ) override;
@@ -98,10 +106,9 @@ private:
     std::string m_msgExpirationMillisecStr;
     std::vector<INetworkObserver *> m_observers;
     std::atomic_bool m_shutdownCalled;
-    SInitSettings m_settings;
-    std::string m_lastError;
     std::map<TCorrelationId, std::string> m_readyResponsesToAsyncMessages;
     std::set<TCorrelationId> m_refusedMessages;
+    SState m_state;
 
     // service
     amqp_connection_state_t m_connTransmit;

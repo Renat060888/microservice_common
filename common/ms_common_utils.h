@@ -28,6 +28,19 @@ namespace common_utils {
 #define PRELOG_ERR std::cerr
 
 // --------------------------------------------------------------
+// convertors
+// --------------------------------------------------------------
+inline std::string convertPersistenceObjStateToStr( common_types::SPersistenceObj::EState _state ){
+    switch (_state) {
+    case common_types::SPersistenceObj::EState::ABSENT : return "ABSENT";
+    case common_types::SPersistenceObj::EState::ACTIVE : return "ACTIVE";
+    case common_types::SPersistenceObj::EState::DESTROYED : return "DESTROYED";
+    case common_types::SPersistenceObj::EState::UNDEFINED : return "UNDEFINED";
+    default : assert( false && "unknown persistence object state" );
+    }
+}
+
+// --------------------------------------------------------------
 // language
 // --------------------------------------------------------------
 

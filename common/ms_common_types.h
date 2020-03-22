@@ -14,7 +14,7 @@ namespace common_types {
 // forwards
 // ---------------------------------------------------------------------------
 class IWALRecordVisitor;
-
+class IPersistenceEntityVisitor;
 
 
 // ---------------------------------------------------------------------------
@@ -33,9 +33,12 @@ using TSensorId = uint64_t;
 using TObjectId = uint64_t;
 
 // player types
-using TTimeRange = std::pair<int64_t, int64_t>;
-using TSession = int32_t;
+using TTimeRangeMillisec = std::pair<int64_t, int64_t>;
+using TSessionNum = int32_t;
 using TLogicStep = int64_t;
+
+// database types
+using TPersistenceSetId = int64_t;
 
 
 // ---------------------------------------------------------------------------
@@ -55,13 +58,101 @@ enum class EServerFeatures : uint16_t {
     UNDEFINED       = 1 << 15,
 };
 
+// TODO: injection implementation details to common library (!)
+enum class EPersistenceSourceType {
+    VIDEO_SERVER,
+    DSS,
+    AUTONOMOUS_RECORDER,
+    UNDEFINED
+};
+
+enum class EPersistenceDataType {
+    TRAJECTORY,
+    WEATHER,
+    UNDEFINED
+};
 
 // ---------------------------------------------------------------------------
 // simple ADT
 // ---------------------------------------------------------------------------
+struct SPersistenceMetadataDescr {
+    SPersistenceMetadataDescr()
+        : persistenceSetId(-1)
+        , contextId(0)
+        , missionId(0)
+        , timeStepIntervalMillisec(-1)
+        , lastRecordedSession(-1)
+        , sourceType(EPersistenceSourceType::UNDEFINED)
+    {}
+
+    TPersistenceSetId persistenceSetId;
+    TContextId contextId;
+    TMissionId missionId;
+    int64_t timeStepIntervalMillisec;
+    TSessionNum lastRecordedSession;
+    EPersistenceSourceType sourceType;
+};
+
+struct SPersistenceMetadataVideo : SPersistenceMetadataDescr {
+    TSensorId recordedFromSensorId;
+};
+
+struct SPersistenceMetadataDSS : SPersistenceMetadataDescr {
+    bool realData;
+    EPersistenceDataType dataType;
+};
+
+struct SPersistenceMetadataRaw : SPersistenceMetadataDescr {
+
+};
 
 
+struct SPersistenceMetadata {
+    std::vector<SPersistenceMetadataVideo> persistenceFromVideo;
+    std::vector<SPersistenceMetadataDSS> persistenceFromDSS;
+    std::vector<SPersistenceMetadataRaw> persistenceFromRaw;
+};
 
+struct SPersistenceObj {
+    enum class EState : int32_t {
+        ACTIVE,
+        DESTROYED,
+        ABSENT,
+        UNDEFINED
+    };
+};
+
+struct SPersistenceTrajectory : SPersistenceObj {
+
+    TObjectId objId;
+    EState state;
+    TSessionNum session;
+    TLogicStep logicTime;
+    int64_t timestampMillisec;
+    float latDeg;
+    float lonDeg;
+    double heading;
+};
+
+struct SPersistenceWeather : SPersistenceObj {
+
+    // TODO: do
+};
+
+struct SPersistenceSetFilter {
+    SPersistenceSetFilter()
+        : persistenceSetId(-1)
+        , sessionId(0)
+        , maxLogicStep(0)
+        , minLogicStep(0)
+    {}
+
+    TPersistenceSetId persistenceSetId;
+
+    TSessionNum sessionId;
+    TLogicStep maxLogicStep;
+    TLogicStep minLogicStep;
+};
 
 
 // ---------------------------------------------------------------------------
@@ -92,6 +183,21 @@ struct SWALClientOperation : SWALRecord {
     std::string commandFullText;
 };
 
+struct SWALUserRegistration : SWALRecord {
+
+    using TRegisterId = std::string;
+
+    static const TRegisterId ALL_IDS;
+
+    virtual void accept( IWALRecordVisitor * _visitor ) const override;
+    virtual std::string serializeToStr() const override;
+
+    TRegisterId registerId;
+    std::string userIp;
+    TPid userPid;
+    std::string registeredAtDateTime;
+};
+
 struct SWALProcessEvent : SWALRecord {
 
     using TUniqueKey = TPid;
@@ -114,7 +220,28 @@ struct SWALOnceMoreRecord : SWALRecord {
 
 };
 
+// persistence
+struct SPersistenceEntity {
+    virtual ~SPersistenceEntity(){}
 
+    virtual void accept( IPersistenceEntityVisitor * _visitor ) const = 0;
+
+    TPersistenceSetId persistenceSetId;
+};
+
+struct SPersistenceTrajectorySet : SPersistenceEntity {
+
+    virtual void accept( IPersistenceEntityVisitor * _visitor ) const override;
+
+    std::vector<SPersistenceTrajectory> trajectories;
+};
+
+struct SPersistenceWeatherSet : SPersistenceEntity {
+
+    virtual void accept( IPersistenceEntityVisitor * _visitor ) const override;
+
+    std::vector<SPersistenceWeather> weathers;
+};
 
 
 // ---------------------------------------------------------------------------
@@ -128,12 +255,15 @@ public:
     virtual void visit( const SWALProcessEvent * _record ) = 0;
     virtual void visit( const SWALOnceMoreRecord * _record ) = 0;
 
-private:
-
 };
 
+class IPersistenceEntityVisitor {
+public:
+    virtual ~IPersistenceEntityVisitor(){}
 
-
+    virtual void visit( const SPersistenceTrajectorySet * _record ) = 0;
+    virtual void visit( const SPersistenceWeatherSet * _record ) = 0;
+};
 
 
 // ---------------------------------------------------------------------------

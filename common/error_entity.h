@@ -13,6 +13,7 @@ public:
 
     const std::string & explain(){ return m_stringRepresentation; }
 
+
 private:
     std::string m_stringRepresentation;
     std::string m_errorSource;

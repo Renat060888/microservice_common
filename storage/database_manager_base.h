@@ -12,6 +12,7 @@ class DatabaseManager
     static int m_instanceCounter;
     static const std::string ALL_CLIENT_OPERATIONS;
     static const common_types::TPid ALL_PROCESS_EVENTS;
+    static const std::string ALL_REGISTRATION_IDS;
 public:
     struct SInitSettings {
         SInitSettings() :
@@ -50,6 +51,9 @@ public:
     std::vector<common_types::SWALProcessEvent> getNonIntegrityProcessEvents();
     void removeProcessEvent( common_types::TPid _pid = ALL_PROCESS_EVENTS );
 
+    bool writeUserRegistration( const common_types::SWALUserRegistration & _registration );
+    std::vector<common_types::SWALUserRegistration> getUserRegistrations();
+    void removeUserRegistration( std::string _registrationId = ALL_REGISTRATION_IDS );
 
 private:
     static void systemInit();
