@@ -1,3 +1,5 @@
+#ifdef SWITCH_LOGGER_SIMPLE
+
 #ifndef LOGGER_SIMPLE_H
 #define LOGGER_SIMPLE_H
 
@@ -34,3 +36,5 @@ private:
 #define VS_LOG_CRITICAL std::cerr
 
 #endif // LOGGER_SIMPLE_H
+
+#endif

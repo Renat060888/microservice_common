@@ -77,7 +77,7 @@ void callbackIncomingMessage( WebsocketServer * _userData,
                         // << " " << _handler.lock().get()
                         << " ws port [" << _userData->m_settings.port << "]"
                         << " bin msg from client [" << request->m_incomingMessage << "]"
-                        << " flag 'from client' [" << request->m_header.m_fromClient << "]"
+                        << " flag 'from client' [" << request->m_header.m_clientInitiative << "]"
                         << endl;
             VS_LOG_INFO << "<==========="
                         << endl;

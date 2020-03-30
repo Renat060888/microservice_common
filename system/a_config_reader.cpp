@@ -7,30 +7,14 @@
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/property_tree/json_parser.hpp>
-#include <boost/property_tree/ptree.hpp>
 
 #include "a_config_reader.h"
 #include "common/ms_common_types.h"
-#include "common/ms_common_utils.h"
 
 using namespace std;
 
-static constexpr const char * PRINT_HEADER = "ConfigReader:";
 static string g_default_main_config_file_name;
-
-template< typename T >
-const T setParameterNew( boost::property_tree::ptree _keyLocation,
-                       const char * _key,
-                       const T _defaultVal ){
-
-    if( _keyLocation.to_iterator(_keyLocation.find(_key)) != _keyLocation.end() ){
-        return _keyLocation.get<T>( _key );
-    }
-    else{
-        PRELOG_ERR << PRINT_HEADER << " WARNING - key [" << _key << "] not found. Set default value [" << _defaultVal << "]" << endl;
-        return _defaultVal;
-    }
-}
+const char * AConfigReader::PRINT_HEADER = "ConfigReader:";
 
 // -----------------------------------------------------------------------------
 // request override
@@ -176,7 +160,7 @@ bool AConfigReader::parseBase( const string & _content ){
     m_parameters.COMMUNICATION_AMQP_ENABLE = setParameterNew<bool>( amqpClient, "enable", false );
     m_parameters.COMMUNICATION_AMQP_SERVER_HOST = setParameterNew<std::string>( amqpClient, "host", string("localhost") );
     m_parameters.COMMUNICATION_AMQP_VIRTUAL_HOST = setParameterNew<std::string>( amqpClient, "virt_host", string("safecity") );
-    m_parameters.COMMUNICATION_AMQP_SERVER_PORT = setParameterNew<int32_t>( amqpClient, "port", 5555 );
+    m_parameters.COMMUNICATION_AMQP_SERVER_PORT = setParameterNew<int32_t>( amqpClient, "port", 5672 );
     m_parameters.COMMUNICATION_AMQP_LOGIN = setParameterNew<std::string>( amqpClient, "login", string("scuser") );
     m_parameters.COMMUNICATION_AMQP_PASS = setParameterNew<std::string>( amqpClient, "pass", string("scpass") );
 

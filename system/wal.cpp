@@ -148,6 +148,36 @@ std::vector<common_types::TPid> WriteAheadLogger::getNonClosedProcesses(){
     return out;
 }
 
+bool WriteAheadLogger::openUserRegistration( const common_types::SWALUserRegistration & _registration ){
+
+    if( ! m_settings.active ){
+        return true;
+    }
+
+    const bool rt = m_settings.persistService->write( _registration );
+    if( ! rt ){
+        // TODO: do
+    }
+
+    return true;
+}
+
+void WriteAheadLogger::closeUserRegistration( common_types::SWALUserRegistration::TRegisterId _id ){
+
+    m_settings.persistService->removeRegistration( _id );
+}
+
+std::vector<common_types::SWALUserRegistration> WriteAheadLogger::getUserRegistrations(){
+
+    if( ! m_settings.active ){
+        return std::vector<common_types::SWALUserRegistration>();
+    }
+
+    // NOTE: or do manual by C++
+    const std::vector<common_types::SWALUserRegistration> registrations = m_settings.persistService->readRegistrations( "" );
+    return registrations;
+}
+
 string WriteAheadLogger::getFullHistory(){
 
     const std::vector<common_types::SWALProcessEvent> events = m_settings.persistService->readEvents( common_types::SWALProcessEvent::ALL_PIDS );

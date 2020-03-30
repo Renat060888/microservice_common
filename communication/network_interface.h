@@ -17,11 +17,11 @@ using TCorrelationId = std::string;
 struct SNetworkPackage {
     struct SHeader {
         SHeader()
-            : m_fromClient(false)
+            : m_clientInitiative(false)
             , m_asyncRequestId(0)
         {}
         // NOTE: not put data types with heap allocation, only POD types !
-        bool m_fromClient;
+        bool m_clientInitiative;
         TAsyncRequestId m_asyncRequestId;
     };
 
@@ -149,7 +149,6 @@ using PEnvironmentRequest = std::shared_ptr<AEnvironmentRequest>;
 // SERVER
 // ------------------------------------
 class INetworkObserver {
-
 public:
     virtual ~INetworkObserver(){}
 
@@ -159,7 +158,6 @@ public:
 };
 
 class INetworkProvider : virtual public INetworkEntity {
-
 public:
     INetworkProvider( INetworkEntity::TConnectionId _id )
         : INetworkEntity(_id)
@@ -172,6 +170,11 @@ public:
     virtual void removeObserver( INetworkObserver * /*_observer*/ ) {}
     virtual void setPollTimeout( int32_t _timeoutMillsec ) = 0;
 
+    virtual PEnvironmentRequest initiateRequestToConnection( INetworkEntity::TConnectionId ){ assert( false && "method not implemented by derive class" ); }
+    virtual std::vector<INetworkEntity::TConnectionId> getChildConnections(){
+        return std::vector<INetworkEntity::TConnectionId>();
+    }
+
     virtual std::vector<INetworkEntity> getConnections() { assert( false && "method not implemented by derive class" ); }
 };
 using PNetworkProvider = std::shared_ptr<INetworkProvider>;
@@ -181,7 +184,6 @@ using PNetworkProvider = std::shared_ptr<INetworkProvider>;
 // CLIENT
 // ------------------------------------
 class INetworkClient : virtual public INetworkEntity {
-
 public:
     INetworkClient( INetworkEntity::TConnectionId _id )
             : INetworkEntity(_id)

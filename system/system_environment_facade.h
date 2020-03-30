@@ -7,7 +7,7 @@
 #include "storage/database_manager_base.h"
 #include "common/ms_common_types.h"
 
-class SystemEnvironment : public common_types::IWALPersistenceService
+class SystemEnvironmentFacade : public common_types::IWALPersistenceService
 {
 public:
     struct SServiceLocator {
@@ -32,8 +32,8 @@ public:
         std::string lastError;
     };
 
-    SystemEnvironment();
-    ~SystemEnvironment();
+    SystemEnvironmentFacade();
+    ~SystemEnvironmentFacade();
 
     bool init( SInitSettings _settings );
     const SState & getState(){ return m_state; }
@@ -62,12 +62,16 @@ private:
     virtual void remove( common_types::SWALProcessEvent::TUniqueKey _filter ) override;
     virtual const std::vector<common_types::SWALProcessEvent> readEvents( common_types::SWALProcessEvent::TUniqueKey _filter ) override;
 
+    virtual bool write( const common_types::SWALUserRegistration & _userRegistration ) override;
+    virtual void removeRegistration( common_types::SWALUserRegistration::TRegisterId _filter ) override;
+    virtual const std::vector<common_types::SWALUserRegistration> readRegistrations( common_types::SWALUserRegistration::TRegisterId _filter ) override;
+
     // data
     SState m_state;
 
     // service
     WriteAheadLogger m_wal;
-    DatabaseManager * m_database;
+    DatabaseManagerBase * m_database;
 
 
 

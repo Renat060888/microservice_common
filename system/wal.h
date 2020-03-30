@@ -33,6 +33,10 @@ public:
     void closeProcessEvent( common_types::SWALProcessEvent::TUniqueKey _pid );
     std::vector<common_types::TPid> getNonClosedProcesses();
 
+    // user registration
+    bool openUserRegistration( const common_types::SWALUserRegistration & _registration );
+    void closeUserRegistration( common_types::SWALUserRegistration::TRegisterId _id );
+    std::vector<common_types::SWALUserRegistration> getUserRegistrations();
 
 private:
     bool isJournalEmpty();

@@ -1,9 +1,10 @@
 #ifdef SWITCH_LOGGER_ASTRA
 
 #include "logger_astra.h"
-#include "common/common_utils.h"
+#include "../common/ms_common_utils.h"
 
 using namespace std;
+using namespace logger_common;
 
 static constexpr const char * PRINT_HEADER = "Logger:";
 

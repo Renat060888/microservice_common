@@ -179,6 +179,7 @@ AmqpClient::AmqpClient( INetworkEntity::TConnectionId _id )
     , m_connTransmit(nullptr)
     , m_connReceive(nullptr)
     , m_threadIncomingPackages(nullptr)
+    , m_syncRequestPerformed(false)
 {
 
 }
@@ -312,6 +313,10 @@ bool AmqpClient::createExchangePoint( const std::string & _exchangePointName, EE
         return false;
     }
 
+    VS_LOG_INFO << PRINT_HEADER
+                << " created EP [" << _exchangePointName << "]"
+                << endl;
+
     return true;
 }
 
@@ -430,6 +435,10 @@ void AmqpClient::poll(){
         if( m_readyResponsesToAsyncMessages.find(corrId) != m_readyResponsesToAsyncMessages.end() ){            
             if( m_refusedMessages.find(corrId) == m_refusedMessages.end() ){
                 m_readyResponsesToAsyncMessages[ corrId ] = string( (char*)envelope.message.body.bytes, envelope.message.body.len );
+
+                if( m_syncRequestPerformed && corrId == m_syncRequestCorrelationId ){
+                    m_cvResponseToBlockedRequestArrived.notify_one();
+                }
             }
             else{
                 VS_LOG_WARN << PRINT_HEADER << " request corr id [" <<corrId << "] will be refused" << endl;
@@ -548,6 +557,9 @@ std::string AmqpClient::sendPackageBlocked( const string & _msg,
 
     std::lock_guard<std::mutex> lock( m_muSendBlocked );
 
+    m_syncRequestPerformed = true;
+    m_syncRequestCorrelationId = _corrId;
+
     // publish options
     constexpr amqp_channel_t channelId = 1;
     constexpr amqp_boolean_t mandatory = 1;
@@ -565,7 +577,7 @@ std::string AmqpClient::sendPackageBlocked( const string & _msg,
     message_bytes.bytes = ( void * )_msg.data();
     message_bytes.len = _msg.size();
 
-    //
+    // perform
     const amqp_status_enum_ publishStatus = (amqp_status_enum_)::amqp_basic_publish(  m_connTransmit,
                                                                     channelId,
                                                                     amqp_cstring_bytes( _exchangeName.c_str() ),
@@ -579,14 +591,28 @@ std::string AmqpClient::sendPackageBlocked( const string & _msg,
         return string();
     }
 
-    // TODO: wait the same CorrId response by CV
-    // and delete from queue
+    std::mutex muCvLock;
+    std::unique_lock<std::mutex> cvLock( muCvLock );
+    m_cvResponseToBlockedRequestArrived.wait_for(   cvLock,
+                                                    std::chrono::milliseconds(m_state.settings.syncRequestTimeoutMillisec),
+                                                    [ this, & _corrId ](){ return m_readyResponsesToAsyncMessages.find(_corrId) != m_readyResponsesToAsyncMessages.end(); } );
 
-    return m_readyResponsesToAsyncMessages[ _corrId ];
+    // cathed ( may be )
+    string response;
+    auto iter = m_readyResponsesToAsyncMessages.find( _corrId );
+    if( iter != m_readyResponsesToAsyncMessages.end() ){
+        response = iter->second;
+        m_readyResponsesToAsyncMessages.erase( _corrId );
+    }
+
+    m_syncRequestPerformed = false;
+    m_syncRequestCorrelationId.clear();
+    return response;
 }
 
 void AmqpClient::refuseFromResponse( const std::string & _corrId ){
 
+    // TODO: do ?
 }
 
 bool AmqpClient::checkResponseReadyness( const std::string & _corrId ){

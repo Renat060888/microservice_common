@@ -1,12 +1,12 @@
-#ifndef DATABASE_MANAGER_ASTRA_H
-#define DATABASE_MANAGER_ASTRA_H
+#ifndef DATABASE_MANAGER_BASE_H
+#define DATABASE_MANAGER_BASE_H
 
 #include <unordered_map>
 
 #include <mongoc.h>
 #include "common/ms_common_types.h"
 
-class DatabaseManager
+class DatabaseManagerBase
 {
     static bool m_systemInited;
     static int m_instanceCounter;
@@ -23,22 +23,41 @@ public:
         std::string databaseName;
     };
 
-    static DatabaseManager * getInstance(){
+    static DatabaseManagerBase * getInstance(){
         if( ! m_systemInited ){
             systemInit();
             m_systemInited = true;
         }
         m_instanceCounter++;
-        return new DatabaseManager();
+        return new DatabaseManagerBase();
     }
 
-    static void destroyInstance( DatabaseManager * & _inst ){
+    static void destroyInstance( DatabaseManagerBase * & _inst ){
         delete _inst;
         _inst = nullptr;
         m_instanceCounter--;
     }
 
     bool init( SInitSettings _settings );
+
+    // analyze - data
+    bool writeTrajectoryData( common_types::TPersistenceSetId _persId, const std::vector<common_types::SPersistenceTrajectory> & _data );
+    std::vector<common_types::SPersistenceTrajectory> readTrajectoryData( const common_types::SPersistenceSetFilter & _filter );
+    bool writeWeatherData( common_types::TPersistenceSetId _persId, const std::vector<common_types::SPersistenceWeather> & _data );
+    std::vector<common_types::SPersistenceWeather> readWeatherData( const common_types::SPersistenceSetFilter & _filter );
+
+    void removeTotalData( const common_types::SPersistenceSetFilter & _filter );
+
+    // analyze - metadata about datasources
+    common_types::TPersistenceSetId writePersistenceSetMetadata( const common_types::SPersistenceMetadataVideo & _type );
+    common_types::TPersistenceSetId writePersistenceSetMetadata( const common_types::SPersistenceMetadataDSS & _type );
+    common_types::TPersistenceSetId writePersistenceSetMetadata( const common_types::SPersistenceMetadataRaw & _type );
+    common_types::SPersistenceMetadata getPersistenceSetMetadata( common_types::TContextId _ctxId );
+    void removePersistenceSetMetadata( common_types::TPersistenceSetId _id );
+
+    // analyze - metadata about specific datasource
+    std::vector<common_types::SEventsSessionInfo> getPersistenceSetSessions( common_types::TPersistenceSetId _persId );
+    std::vector<common_types::SObjectStep> getSessionSteps( common_types::TPersistenceSetId _persId, common_types::TSessionNum _sesNum );
 
     // WAL
     bool writeClientOperation( const common_types::SWALClientOperation & _operation );
@@ -58,13 +77,15 @@ public:
 private:
     static void systemInit();
 
-    DatabaseManager();
-    ~DatabaseManager();
+    DatabaseManagerBase();
+    ~DatabaseManagerBase();
 
-    DatabaseManager( const DatabaseManager & _inst ) = delete;
-    DatabaseManager & operator=( const DatabaseManager & _inst ) = delete;
+    DatabaseManagerBase( const DatabaseManagerBase & _inst ) = delete;
+    DatabaseManagerBase & operator=( const DatabaseManagerBase & _inst ) = delete;
 
     inline bool createIndex( const std::string & _tableName, const std::vector<std::string> & _fieldNames );
+    inline mongoc_collection_t * getAnalyticContextTable( common_types::TPersistenceSetId _persId );
+    inline std::string getTableName( common_types::TPersistenceSetId _persId );
 
     // data
     mongoc_collection_t * m_tableWALClientOperations;
@@ -78,5 +99,5 @@ private:
     mongoc_database_t * m_database;
 };
 
-#endif // DATABASE_MANAGER_ASTRA_H
+#endif // DATABASE_MANAGER_BASE_H
 
