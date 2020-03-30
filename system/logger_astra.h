@@ -7,40 +7,14 @@
 
 #include "logger_common.h"
 
-using TFuncPtr = void( * )( const std::string & _msg );
-
 class Logger final {
-
 public:
-    enum class ELogEndpoints {
-        Stdout      = 1 << 0,
-        File        = 1 << 1,
-        MongoDB     = 1 << 2,
-        Network     = 1 << 3,
-        FuncPtr     = 1 << 4,
-        Undefined   = 1 << 31
-    };
-
-    struct SInitSettings {
-        SInitSettings() :
-            logEndpoints(ELogEndpoints::Stdout)
-        {}
-        std::string loggerName;
-        ELogEndpoints logEndpoints;
-        // optional
-        TFuncPtr funcPtr;
-        std::string fileName;
-        std::string filePath;
-        int32_t rotationSizeMb;
-        std::string unilogConfigPath;
-    };
-
     static Logger & singleton(){
         static Logger instance;
         return instance;
     }
 
-    void initGlobal( const SInitSettings & _settings );
+    void initGlobal( const logger_common::SInitSettings & _settings );
 
     unilog::LoggerPtr _lg;
 

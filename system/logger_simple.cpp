@@ -1,3 +1,4 @@
+#ifdef SWITCH_LOGGER_SIMPLE
 
 #include "logger_simple.h"
 
@@ -12,3 +13,5 @@ Logger::~Logger()
 {
 
 }
+
+#endif

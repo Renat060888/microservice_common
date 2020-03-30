@@ -4,11 +4,15 @@
 #include <string>
 #include <map>
 
+#include <boost/property_tree/ptree.hpp>
+
 #include "communication/network_interface.h"
 #include "communication/unified_command_convertor.h"
+#include "common/ms_common_utils.h"
 
 class AConfigReader
 {
+    static const char * PRINT_HEADER;
 public:
     struct SConfigParameters {
         // TODO: valid values range & existing ( isParametersCorrect() )
@@ -90,9 +94,25 @@ protected:
     AConfigReader & operator=( const AConfigReader & _inst ) = delete;
 
     virtual bool initDerive( const SIninSettings & _settings ) = 0;
-    virtual bool parse( const std::string & _filePath ) = 0;
+    virtual bool parse( const std::string & _content ) = 0;
     virtual bool createCommandsFromConfig( const std::string & _content ) = 0;
     virtual void printToStdoutConfigExampleDerive() = 0;
+
+    template< typename T >
+    const T setParameterNew( boost::property_tree::ptree _keyLocation,
+                           const char * _key,
+                           const T _defaultVal ){
+
+        if( _keyLocation.to_iterator(_keyLocation.find(_key)) != _keyLocation.end() ){
+            return _keyLocation.get<T>( _key );
+        }
+        else{
+            PRELOG_ERR << PRINT_HEADER << " WARNING - key [" << _key << "] not found. Set default value [" << _defaultVal << "]" << std::endl;
+            return _defaultVal;
+        }
+    }
+
+    SConfigParameters m_parameters;
 
 
 private:
@@ -105,7 +125,6 @@ private:
 
     // data
     SIninSettings m_settings;
-    SConfigParameters m_parameters;
 
     // service
     UnifiedCommandConvertor * m_commandConvertor;

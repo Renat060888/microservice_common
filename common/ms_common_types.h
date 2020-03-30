@@ -26,6 +26,9 @@ using TPid = pid_t;
 using TCommandLineArgKey = std::string;
 using TCommandLineArgVal = std::string;
 
+// service types
+using TUserId = std::string;
+
 // objrepr types
 using TContextId = uint32_t;
 using TMissionId = uint32_t;
@@ -154,6 +157,61 @@ struct SPersistenceSetFilter {
     TLogicStep minLogicStep;
 };
 
+struct SObjectStep {
+    TLogicStep logicStep;
+    int64_t timestampMillisec;
+};
+
+struct SEventsSessionInfo {
+    SEventsSessionInfo(){
+        clear();
+    }
+
+    void clear(){
+        number = 0;
+        minLogicStep = 0;
+        maxLogicStep = 0;
+        minTimestampMillisec = 0;
+        maxTimestampMillisec = 0;
+        steps.clear();
+    }
+
+    bool empty(){
+        return (
+        number == 0 &&
+        minLogicStep == 0 &&
+        maxLogicStep == 0 &&
+        minTimestampMillisec == 0 &&
+        maxTimestampMillisec == 0 &&
+        steps.empty() );
+    }
+
+    TSessionNum number;
+    TLogicStep minLogicStep;
+    TLogicStep maxLogicStep;
+    int64_t minTimestampMillisec;
+    int64_t maxTimestampMillisec;
+    std::vector<SObjectStep> steps;
+};
+
+struct SUserState {
+    TUserId userId;
+    std::string userIp;
+    TPid userPid;
+    int64_t lastPingMillisec;
+};
+
+struct FunctorObjectStep {
+    FunctorObjectStep( TLogicStep _stepToFind )
+        : stepToFind(_stepToFind)
+    {}
+
+    bool operator()( const SObjectStep & _rhs ){
+        return ( stepToFind == _rhs.logicStep );
+    }
+
+    TLogicStep stepToFind;
+};
 
 // ---------------------------------------------------------------------------
 // exchange ADT ( component <-> store, component <-> network, etc... )
@@ -253,6 +311,7 @@ public:
 
     virtual void visit( const SWALClientOperation * _record ) = 0;
     virtual void visit( const SWALProcessEvent * _record ) = 0;
+    virtual void visit( const SWALUserRegistration * _record ) = 0;
     virtual void visit( const SWALOnceMoreRecord * _record ) = 0;
 
 };
@@ -288,6 +347,10 @@ public:
     virtual bool write( const SWALProcessEvent & _processEvent ) = 0;
     virtual void remove( SWALProcessEvent::TUniqueKey _filter ) = 0;
     virtual const std::vector<SWALProcessEvent> readEvents( SWALProcessEvent::TUniqueKey _filter ) = 0;
+
+    virtual bool write( const SWALUserRegistration & _userRegistration ) = 0;
+    virtual void removeRegistration( SWALUserRegistration::TRegisterId _filter ) = 0;
+    virtual const std::vector<SWALUserRegistration> readRegistrations( SWALUserRegistration::TRegisterId _filter ) = 0;
 };
 
 

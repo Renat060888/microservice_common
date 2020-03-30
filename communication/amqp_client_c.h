@@ -40,6 +40,7 @@ public:
             , pass("guest")
             , serverPollTimeoutMillisec(10)
             , deliveredMessageExpirationSec(30)
+            , syncRequestTimeoutMillisec(3000)
         {}
 
         bool asyncMode;
@@ -50,6 +51,7 @@ public:
         std::string pass;
         int64_t serverPollTimeoutMillisec;
         int32_t deliveredMessageExpirationSec;
+        int64_t syncRequestTimeoutMillisec;
     };
 
     struct SState {
@@ -109,6 +111,8 @@ private:
     std::map<TCorrelationId, std::string> m_readyResponsesToAsyncMessages;
     std::set<TCorrelationId> m_refusedMessages;
     SState m_state;
+    TCorrelationId m_syncRequestCorrelationId;
+    bool m_syncRequestPerformed;
 
     // service
     amqp_connection_state_t m_connTransmit;
@@ -116,6 +120,7 @@ private:
     std::thread * m_threadIncomingPackages;
     std::mutex m_muSendBlocked;
     std::mutex m_muSendAsync;
+    std::condition_variable m_cvResponseToBlockedRequestArrived;
 };
 using PAmqpClient = std::shared_ptr<AmqpClient>;
 

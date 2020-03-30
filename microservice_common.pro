@@ -17,7 +17,7 @@ QMAKE_CXXFLAGS += -Wno-unused-variable
 
 # TODO: add defines to logger, system monitor, restbed webserver, database, etc...
 DEFINES += \
-    SWITCH_LOGGER_SIMPLE \
+    SWITCH_LOGGER_ASTRA \
 
 INCLUDEPATH += \
     /usr/include/libgtop-2.0 \
@@ -25,7 +25,7 @@ INCLUDEPATH += \
     /usr/include/libbson-1.0 \
 
 LIBS += -L/usr/lib/x86_64-linux-gnu/nvidia/current
-LIBS += \
+LIBS += \    
     -lmongoc-1.0 \
     -lbson-1.0 \
     -lcurl \
@@ -34,6 +34,8 @@ LIBS += \
     -lgtop-2.0 \
     -lboost_filesystem \
     -lboost_program_options \
+    -lunilog \
+    -lobjrepr \
 
 SOURCES += \
         3rd_party/EdUrlParser.cpp \
@@ -66,13 +68,13 @@ SOURCES += \
         system/object_pool.cpp \
         system/objrepr_bus.cpp \
         system/process_launcher.cpp \
-        system/system_environment.cpp \
         system/system_monitor.cpp \
         system/thread_pool.cpp \
         system/threaded_multitask_service.cpp \
         system/wal.cpp \
         unit_tests/communication_tests.cpp \
-        unit_tests/system_tests.cpp
+        unit_tests/system_tests.cpp \
+    system/system_environment_facade.cpp
 
 HEADERS += \
     3rd_party/EdUrlParser.h \
@@ -112,11 +114,12 @@ HEADERS += \
     system/object_pool.h \
     system/objrepr_bus.h \
     system/process_launcher.h \
-    system/system_environment.h \
     system/system_monitor.h \
     system/thread_pool.h \
     system/thread_pool_task.h \
     system/threaded_multitask_service.h \
     system/wal.h \
     unit_tests/communication_tests.h \
-    unit_tests/system_tests.h
+    unit_tests/system_tests.h \
+    analyze/dummy.h \
+    system/system_environment_facade.h
