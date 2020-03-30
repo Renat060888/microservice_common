@@ -56,6 +56,9 @@ public:
 
 
 private:
+    ClassFactory( const ClassFactory & _rhs ) = delete;
+    ClassFactory & operator=( const ClassFactory & _rhs ) = delete;
+
     std::map<std::string, FPCreateInstanceOfClass> m_classes;
 };
 #define CLASS_FACTORY ClassFactory::singleton()

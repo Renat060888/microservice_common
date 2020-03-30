@@ -17,7 +17,7 @@ QMAKE_CXXFLAGS += -Wno-unused-variable
 
 # TODO: add defines to logger, system monitor, restbed webserver, database, etc...
 DEFINES += \
-    SWITCH_LOGGER_ASTRA \
+    SWITCH_LOGGER_SIMPLE \
 
 INCLUDEPATH += \
     /usr/include/libgtop-2.0 \
@@ -34,8 +34,13 @@ LIBS += \
     -lgtop-2.0 \
     -lboost_filesystem \
     -lboost_program_options \
+
+contains( DEFINES, OBJREPR_LIBRARY_EXIST ){
+    message("connect 'unilog' and 'objrepr' libraries")
+LIBS += \    
     -lunilog \
-    -lobjrepr \
+    -lobjrepr
+}
 
 SOURCES += \
         3rd_party/EdUrlParser.cpp \
