@@ -213,6 +213,9 @@ std::vector<SPersistenceTrajectory> DatabaseManagerBase::readTrajectoryData( con
 
     bson_t * projection = nullptr;
     bson_t * query = nullptr;
+
+    // TODO: clarify load mode - only one step, steps range, whole data
+
     if( _filter.minLogicStep == _filter.maxLogicStep ){
         query = BCON_NEW( "$and", "[", "{", mongo_fields::analytic::detected_object::SESSION.c_str(), BCON_INT32(_filter.sessionId), "}",
                                        "{", mongo_fields::analytic::detected_object::LOGIC_TIME.c_str(), "{", "$eq", BCON_INT64(_filter.minLogicStep), "}", "}",
@@ -309,22 +312,27 @@ std::vector<common_types::SPersistenceWeather> DatabaseManagerBase::readWeatherD
 
 TPersistenceSetId DatabaseManagerBase::writePersistenceSetMetadata( const common_types::SPersistenceMetadataVideo & _type ){
 
+    // TODO: implement me
 }
 
 TPersistenceSetId DatabaseManagerBase::writePersistenceSetMetadata( const common_types::SPersistenceMetadataDSS & _type ){
 
+    // TODO: implement me
 }
 
 TPersistenceSetId DatabaseManagerBase::writePersistenceSetMetadata( const common_types::SPersistenceMetadataRaw & _type ){
 
+    // TODO: implement me
 }
 
 SPersistenceMetadata DatabaseManagerBase::getPersistenceSetMetadata( common_types::TContextId _ctxId ){
 
+    // TODO: implement me
 }
 
 void DatabaseManagerBase::removePersistenceSetMetadata( common_types::TPersistenceSetId _id ){
 
+    // TODO: implement me
 }
 
 std::vector<SEventsSessionInfo> DatabaseManagerBase::getPersistenceSetSessions( TPersistenceSetId _persId ){

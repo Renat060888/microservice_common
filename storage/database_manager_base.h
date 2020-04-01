@@ -4,6 +4,7 @@
 #include <unordered_map>
 
 #include <mongoc.h>
+
 #include "common/ms_common_types.h"
 
 class DatabaseManagerBase
@@ -73,6 +74,7 @@ public:
     bool writeUserRegistration( const common_types::SWALUserRegistration & _registration );
     std::vector<common_types::SWALUserRegistration> getUserRegistrations();
     void removeUserRegistration( std::string _registrationId = ALL_REGISTRATION_IDS );
+
 
 private:
     static void systemInit();
