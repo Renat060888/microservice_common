@@ -23,7 +23,10 @@ public:
 
     bool openContextAsync( common_types::TContextId _ctxId );
     bool closeContext();
+
     common_types::TContextId getCurrentContextId();
+    common_types::TContextId getContextIdByName( const std::string & _ctxName );
+    std::string getContextNameById( common_types::TContextId _ctxId );
 
 
 private:
@@ -38,8 +41,6 @@ private:
     bool launch( const std::string & _configPath );    
     bool openContext( const std::string & _ctxName );
 
-    common_types::TContextId getContextIdByName( const std::string & _ctxName );
-    std::string getContextNameById( common_types::TContextId _ctxId );
 
 
     // data

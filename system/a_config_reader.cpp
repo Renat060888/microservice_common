@@ -16,22 +16,6 @@ using namespace std;
 static string g_default_main_config_file_name;
 const char * AConfigReader::PRINT_HEADER = "ConfigReader:";
 
-// -----------------------------------------------------------------------------
-// request override
-// -----------------------------------------------------------------------------
-class RequestFromConfig : public AEnvironmentRequest {
-
-public:
-    virtual void setOutcomingMessage( const std::string & /*_msg*/ ) override {
-        // dummy
-    }
-};
-using RequestFromConfigPtr = std::shared_ptr<RequestFromConfig>;
-
-
-// -----------------------------------------------------------------------------
-//
-// -----------------------------------------------------------------------------
 AConfigReader::AConfigReader()
 {
 
@@ -47,6 +31,7 @@ bool AConfigReader::init( const SIninSettings & _settings ){
     assert( ! _settings.projectName.empty() );
 
     m_settings = _settings;
+    m_commandConvertor = _settings.commandConvertor;
 
     g_default_main_config_file_name = _settings.projectName + "_main_cfg.json";
 
@@ -77,6 +62,10 @@ bool AConfigReader::init( const SIninSettings & _settings ){
     m_parameters.OBJREPR_CONFIG_PATH = path + "/" + m_parameters.OBJREPR_CONFIG_PATH;
     m_parameters.SYSTEM_UNILOG_CONFIG_PATH = path + "/" + m_parameters.SYSTEM_UNILOG_CONFIG_PATH;
 
+    if( ! createCommandsFromConfig(content) ){
+        return false;
+    }
+
     if( ! initDerive(_settings) ){
         return false;
     }
@@ -84,11 +73,12 @@ bool AConfigReader::init( const SIninSettings & _settings ){
     return true;
 }
 
-void AConfigReader::printToStdoutConfigExample(){
+std::string AConfigReader::getConfigExample(){
 
     // TODO: print base parameters
 
-    printToStdoutConfigExampleDerive();
+    const string deriveExample = getConfigExampleDerive();
+    return deriveExample;
 }
 
 bool AConfigReader::parseBase( const string & _content ){
@@ -174,11 +164,7 @@ bool AConfigReader::parseBase( const string & _content ){
     boost::property_tree::ptree mongoDB = config.get_child("mongo_db");
     m_parameters.MONGO_DB_ADDRESS = setParameterNew<std::string>( mongoDB, "host", string("localhosst") );
     m_parameters.MONGO_DB_NAME = setParameterNew<std::string>( mongoDB, "database_name", string("video_server") );
-    m_parameters.MONGO_LOGGER_TABLE = setParameterNew<std::string>( mongoDB, "logger_table", string("log") );
-
-    if( ! createCommandsFromConfig(_content) ){
-        return false;
-    }
+    m_parameters.MONGO_LOGGER_TABLE = setParameterNew<std::string>( mongoDB, "logger_table", string("log") );    
 
     // parse derive part
     if( ! parse(_content) ){

@@ -8,13 +8,13 @@
 
 class UnifiedCommandConvertor
 {
-public:
+public:        
     UnifiedCommandConvertor();
     virtual ~UnifiedCommandConvertor();
 
-    virtual std::string getCommandsFromProgramArgs( const std::map<common_types::TCommandLineArgKey, common_types::TCommandLineArgVal> & _args ) = 0;
-    virtual std::string getCommandsFromConfigFile( const std::string & _commands ) = 0;
-    virtual std::string getCommandsFromHTTPRequest( const std::string & _httpMethod,
+    virtual std::string getCommandFromProgramArgs( const std::map<common_types::TCommandLineArgKey, common_types::TCommandLineArgVal> & _args ) = 0;
+    virtual std::string getCommandFromConfigFile( const std::string & _command ) = 0;
+    virtual std::string getCommandFromHTTPRequest( const std::string & _httpMethod,
                                                     const std::string & _uri,
                                                     const std::string & _queryString,
                                                     const std::string & _body ) = 0;

@@ -89,7 +89,7 @@ void callbackEventHandler2( mg_connection * _connect, int _eventType, void * _ev
 //                    << endl;
 
         // convert command from HTTP format to internal representation
-        request->m_incomingMessage = webserver->m_impl->commandConvertor->getCommandsFromHTTPRequest( method, uri, request->incomingQueryString, request->m_incomingMessage );
+        request->m_incomingMessage = webserver->m_impl->commandConvertor->getCommandFromHTTPRequest( method, uri, request->incomingQueryString, request->m_incomingMessage );
 
         // notify observers
         for( INetworkObserver * observer : webserver->m_impl->observers ){

@@ -10,10 +10,25 @@
 #include "communication/unified_command_convertor.h"
 #include "common/ms_common_utils.h"
 
+// -----------------------------------------------------------------------------
+// request override
+// -----------------------------------------------------------------------------
+class RequestFromConfig : public AEnvironmentRequest {
+
+public:
+    virtual void setOutcomingMessage( const std::string & /*_msg*/ ) override {
+        // dummy
+    }
+};
+using RequestFromConfigPtr = std::shared_ptr<RequestFromConfig>;
+
+// -----------------------------------------------------------------------------
+//
+// -----------------------------------------------------------------------------
 class AConfigReader
 {
     static const char * PRINT_HEADER;
-public:
+public:        
     struct SConfigParameters {
         // TODO: valid values range & existing ( isParametersCorrect() )
         SConfigParameters()
@@ -83,20 +98,7 @@ public:
     bool init( const SIninSettings & _settings );
     const SConfigParameters & get(){ return m_parameters; }
 
-    void printToStdoutConfigExample();
-
-
-protected:
-    AConfigReader();
-    virtual ~AConfigReader();
-
-    AConfigReader( const AConfigReader & _inst ) = delete;
-    AConfigReader & operator=( const AConfigReader & _inst ) = delete;
-
-    virtual bool initDerive( const SIninSettings & _settings ) = 0;
-    virtual bool parse( const std::string & _content ) = 0;
-    virtual bool createCommandsFromConfig( const std::string & _content ) = 0;
-    virtual void printToStdoutConfigExampleDerive() = 0;
+    std::string getConfigExample();
 
     template< typename T >
     const T setParameterNew( boost::property_tree::ptree _keyLocation,
@@ -112,8 +114,25 @@ protected:
         }
     }
 
+
+protected:
+    AConfigReader();
+    virtual ~AConfigReader();
+
+    AConfigReader( const AConfigReader & _inst ) = delete;
+    AConfigReader & operator=( const AConfigReader & _inst ) = delete;
+
+    virtual bool initDerive( const SIninSettings & _settings ) = 0;
+    virtual bool parse( const std::string & _content ) = 0;
+    virtual bool createCommandsFromConfig( const std::string & _content ) = 0;
+    virtual std::string getConfigExampleDerive() = 0;
+
+
+    // data
     SConfigParameters m_parameters;
 
+    // service
+    UnifiedCommandConvertor * m_commandConvertor;
 
 private:
     bool parseBase( const std::string & _filePath );
@@ -127,7 +146,7 @@ private:
     SIninSettings m_settings;
 
     // service
-    UnifiedCommandConvertor * m_commandConvertor;
+
 
 
 

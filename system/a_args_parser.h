@@ -24,7 +24,7 @@ public:
         int argc;
         char ** argv;
         UnifiedCommandConvertor * commandConvertor;
-        std::function<void()> printConfigExample;
+        std::function<std::string()> printConfigExample;
     };
 
     bool init( const SInitSettings & _settings ){
@@ -92,7 +92,8 @@ private:
         }
 
         if( varMap.find("print-main-config") != varMap.end() ){
-            m_settings.printConfigExample();
+            const std::string example = m_settings.printConfigExample();
+            PRELOG_INFO << example << std::endl;
             ::exit( EXIT_SUCCESS );
         }
         if( varMap.find("version") != varMap.end() ){

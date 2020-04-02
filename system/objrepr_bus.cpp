@@ -136,6 +136,7 @@ common_types::TContextId ObjreprBus::getContextIdByName( const std::string & _ct
 
     return contextId;
 #endif
+    return 0;
 }
 
 std::string ObjreprBus::getContextNameById( common_types::TContextId _ctxId ){
@@ -150,6 +151,7 @@ std::string ObjreprBus::getContextNameById( common_types::TContextId _ctxId ){
 
     return contextName;
 #endif
+    return string();
 }
 
 void ObjreprBus::threadObjreprContextLoading( common_types::TContextId _ctxId ){
