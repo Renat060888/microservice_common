@@ -40,6 +40,25 @@ inline std::string convertPersistenceObjStateToStr( common_types::SPersistenceOb
     }
 }
 
+inline std::string convertPersistenceTypeToStr( common_types::EPersistenceSourceType _type ){
+    switch (_type) {
+    case common_types::EPersistenceSourceType::VIDEO_SERVER : return "VIDEO_SERVER";
+    case common_types::EPersistenceSourceType::AUTONOMOUS_RECORDER : return "AUTONOMOUS_RECORDER";
+    case common_types::EPersistenceSourceType::DSS : return "DSS";
+    case common_types::EPersistenceSourceType::UNDEFINED : return "UNDEFINED";
+    default : assert( false && "unknown persistence source type enum" );
+    }
+}
+
+inline common_types::EPersistenceSourceType convertPersistenceTypeFromStr( const std::string & _type ){
+
+    if( "VIDEO_SERVER" == _type ){ return common_types::EPersistenceSourceType::VIDEO_SERVER; }
+    else if( "AUTONOMOUS_RECORDER" == _type ){ return common_types::EPersistenceSourceType::AUTONOMOUS_RECORDER; }
+    else if( "DSS" == _type ){ return common_types::EPersistenceSourceType::DSS; }
+    else if( "UNDEFINED" == _type ){ return common_types::EPersistenceSourceType::UNDEFINED; }
+    else{ assert( false && "unknown persistence source type str: " && _type.c_str() ); }
+}
+
 // --------------------------------------------------------------
 // language
 // --------------------------------------------------------------

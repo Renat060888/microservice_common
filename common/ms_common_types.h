@@ -80,13 +80,15 @@ enum class EPersistenceDataType {
 // ---------------------------------------------------------------------------
 struct SPersistenceMetadataDescr {
     SPersistenceMetadataDescr()
-        : persistenceSetId(-1)
+        : persistenceSetId(INVALID_PERSISTENCE_ID)
         , contextId(0)
         , missionId(0)
         , timeStepIntervalMillisec(-1)
         , lastRecordedSession(-1)
         , sourceType(EPersistenceSourceType::UNDEFINED)
     {}
+
+    static constexpr TPersistenceSetId INVALID_PERSISTENCE_ID = -1;
 
     TPersistenceSetId persistenceSetId;
     TContextId contextId;

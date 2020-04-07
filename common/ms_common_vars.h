@@ -5,6 +5,8 @@
 
 namespace common_vars {
 
+static constexpr common_types::TContextId ALL_CONTEXT_ID = 0xFFFFFFFF;
+
 static constexpr common_types::TContextId INVALID_CONTEXT_ID = 0;
 static constexpr common_types::TMissionId INVALID_MISSION_ID = 0;
 static constexpr common_types::TSessionNum INVALID_SESSION_NUM = -1;
@@ -26,13 +28,6 @@ namespace mongo_fields {
 
 namespace analytic {
 
-namespace metadata {
-    const std::string COLLECTION_NAME = "analytic_metadata";
-    const std::string CTX_ID = "ctx_id";
-    const std::string SENSOR_ID = "sensor_id";
-    const std::string LAST_SESSION_ID = "last_session_id";
-    const std::string UPDATE_STEP_MILLISEC = "update_step_millisec";
-}
     const std::string COLLECTION_NAME = "analytic_events";
 
     const std::string JSON = "json";
@@ -54,6 +49,35 @@ namespace detected_object {
 
 }
 
+namespace persistence_set_metadata {
+    const std::string COLLECTION_NAME = "persistence_set_metadata";
+
+    const std::string PERSISTENCE_ID = "persistence_id";
+    const std::string CTX_ID = "ctx_id";
+    const std::string MISSION_ID = "mission_id";
+    const std::string LAST_SESSION_ID = "last_session_id";
+    const std::string UPDATE_STEP_MILLISEC = "update_step_millisec";
+    const std::string SOURCE_TYPE = "source_type";
+}
+
+namespace persistence_set_metadata_video {
+    const std::string COLLECTION_NAME = "persistence_set_metadata_video";
+
+    const std::string SENSOR_ID = "sensor_id";
+}
+
+namespace persistence_set_metadata_raw {
+    const std::string COLLECTION_NAME = "persistence_set_metadata_raw";
+
+    const std::string SENSOR_ID = "sensor_id";
+}
+
+namespace persistence_set_metadata_dss {
+    const std::string COLLECTION_NAME = "persistence_set_metadata_dss";
+
+    const std::string SENSOR_ID = "sensor_id";
+}
+
 namespace wal_client_operations {
     const std::string COLLECTION_NAME = "wal_client_operations";
 
@@ -71,6 +95,13 @@ namespace wal_process_events {
     const std::string PROGRAM_NAME = "program_name";
     const std::string PROGRAM_ARGS = "program_args";
 }
+
+namespace wal_user_registrations {
+    const std::string COLLECTION_NAME = "wal_user_registrations";
+
+    const std::string USER_ID = "user_id";
+}
+
 }
 
 }

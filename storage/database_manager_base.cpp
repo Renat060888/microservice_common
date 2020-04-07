@@ -17,6 +17,8 @@ static const string ARGS_DELIMETER = "$";
 
 bool DatabaseManagerBase::m_systemInited = false;
 int DatabaseManagerBase::m_instanceCounter = 0;
+
+// TODO: move away from database environment
 const std::string DatabaseManagerBase::ALL_CLIENT_OPERATIONS = "";
 const common_types::TPid DatabaseManagerBase::ALL_PROCESS_EVENTS = 0;
 const std::string DatabaseManagerBase::ALL_REGISTRATION_IDS = "";
@@ -44,6 +46,21 @@ void DatabaseManagerBase::systemInit(){
     mongoc_init();    
     VS_LOG_INFO << PRINT_HEADER << " init success" << endl;
     m_systemInited = true;
+}
+
+DatabaseManagerBase * DatabaseManagerBase::getInstance(){
+    if( ! m_systemInited ){
+        systemInit();
+        m_systemInited = true;
+    }
+    m_instanceCounter++;
+    return new DatabaseManagerBase();
+}
+
+void DatabaseManagerBase::destroyInstance( DatabaseManagerBase * & _inst ){
+    delete _inst;
+    _inst = nullptr;
+    m_instanceCounter--;
 }
 
 // -------------------------------------------------------------------------------------
@@ -76,8 +93,32 @@ bool DatabaseManagerBase::init( SInitSettings _settings ){
         _settings.databaseName.c_str(),
         (string("video_server_") + mongo_fields::wal_process_events::COLLECTION_NAME).c_str() );
 
+    m_tableWALUserRegistrations = mongoc_client_get_collection( m_mongoClient,
+        _settings.databaseName.c_str(),
+        (string("video_server_") + mongo_fields::wal_user_registrations::COLLECTION_NAME).c_str() );
+
+    m_tablePersistenceDescr = mongoc_client_get_collection( m_mongoClient,
+        _settings.databaseName.c_str(),
+        (string("video_server_") + mongo_fields::persistence_set_metadata::COLLECTION_NAME).c_str() );
+
+    m_tablePersistenceFromVideo = mongoc_client_get_collection( m_mongoClient,
+        _settings.databaseName.c_str(),
+        (string("video_server_") + mongo_fields::persistence_set_metadata_video::COLLECTION_NAME).c_str() );
+
+    m_tablePersistenceFromRaw = mongoc_client_get_collection( m_mongoClient,
+        _settings.databaseName.c_str(),
+        (string("video_server_") + mongo_fields::persistence_set_metadata_raw::COLLECTION_NAME).c_str() );
+
+    m_tablePersistenceFromDSS = mongoc_client_get_collection( m_mongoClient,
+        _settings.databaseName.c_str(),
+        (string("video_server_") + mongo_fields::persistence_set_metadata_dss::COLLECTION_NAME).c_str() );
+
     m_allCollections.push_back( m_tableWALClientOperations );
     m_allCollections.push_back( m_tableWALProcessEvents );
+    m_allCollections.push_back( m_tablePersistenceDescr );
+    m_allCollections.push_back( m_tablePersistenceFromVideo );
+    m_allCollections.push_back( m_tablePersistenceFromRaw );
+    m_allCollections.push_back( m_tablePersistenceFromDSS );
 
     VS_LOG_INFO << PRINT_HEADER << " instance connected to [" << _settings.host << "]" << endl;
     return true;
@@ -168,7 +209,7 @@ inline string DatabaseManagerBase::getTableName( common_types::TPersistenceSetId
 }
 
 // -------------------------------------------------------------------------------------
-// analytic events
+// object payload
 // -------------------------------------------------------------------------------------
 bool DatabaseManagerBase::writeTrajectoryData( TPersistenceSetId _persId, const vector<SPersistenceTrajectory> & _data ){
 
@@ -181,7 +222,7 @@ bool DatabaseManagerBase::writeTrajectoryData( TPersistenceSetId _persId, const 
 
         bson_t * doc = BCON_NEW( mongo_fields::analytic::detected_object::OBJRERP_ID.c_str(), BCON_INT64( traj.objId ),
                                  mongo_fields::analytic::detected_object::STATE.c_str(), BCON_INT32( (int32_t)(traj.state) ),
-                                 mongo_fields::analytic::detected_object::ASTRO_TIME.c_str(), BCON_INT64( 0 ),
+                                 mongo_fields::analytic::detected_object::ASTRO_TIME.c_str(), BCON_INT64( traj.timestampMillisec ),
                                  mongo_fields::analytic::detected_object::LOGIC_TIME.c_str(), BCON_INT64( traj.logicTime ),
                                  mongo_fields::analytic::detected_object::SESSION.c_str(), BCON_INT32( traj.session ),
                                  mongo_fields::analytic::detected_object::LAT.c_str(), BCON_DOUBLE( traj.latDeg ),
@@ -226,7 +267,7 @@ std::vector<SPersistenceTrajectory> DatabaseManagerBase::readTrajectoryData( con
         query = BCON_NEW( "$and", "[", "{", mongo_fields::analytic::detected_object::SESSION.c_str(), BCON_INT32(_filter.sessionId), "}",
                                        "{", mongo_fields::analytic::detected_object::LOGIC_TIME.c_str(), "{", "$gte", BCON_INT64(_filter.minLogicStep), "}", "}",
                                        "{", mongo_fields::analytic::detected_object::LOGIC_TIME.c_str(), "{", "$lte", BCON_INT64(_filter.maxLogicStep), "}", "}",
-                                  "]"
+                                        "]"
                         );
     }
     else{
@@ -310,7 +351,12 @@ std::vector<common_types::SPersistenceWeather> DatabaseManagerBase::readWeatherD
     return out;
 }
 
-TPersistenceSetId DatabaseManagerBase::writePersistenceSetMetadata( const common_types::SPersistenceMetadataVideo & _type ){
+// -------------------------------------------------------------------------------------
+// persistence metadata
+// -------------------------------------------------------------------------------------
+
+// persistence write
+TPersistenceSetId DatabaseManagerBase::writePersistenceSetMetadata( const common_types::SPersistenceMetadataVideo & _videoMetadata ){
 
     // TODO: implement me
 }
@@ -320,19 +366,358 @@ TPersistenceSetId DatabaseManagerBase::writePersistenceSetMetadata( const common
     // TODO: implement me
 }
 
-TPersistenceSetId DatabaseManagerBase::writePersistenceSetMetadata( const common_types::SPersistenceMetadataRaw & _type ){
+TPersistenceSetId DatabaseManagerBase::writePersistenceSetMetadata( const common_types::SPersistenceMetadataRaw & _rawMetadata ){
 
-    // TODO: implement me
+    // update existing PersistenceId ( if it valid of course )
+    if( _rawMetadata.persistenceSetId != SPersistenceMetadataDescr::INVALID_PERSISTENCE_ID ){
+
+        if( isPersistenceMetadataValid(_rawMetadata.persistenceSetId, _rawMetadata) ){
+            writePersistenceMetadataGlobal( _rawMetadata.persistenceSetId, _rawMetadata );
+            writePersistenceFromRaw( _rawMetadata );
+
+            return _rawMetadata.persistenceSetId;
+        }
+        else{
+            return SPersistenceMetadataDescr::INVALID_PERSISTENCE_ID;
+        }
+    }
+    // create new persistence record
+    else{
+        const TPersistenceSetId persId = createNewPersistenceId();
+        writePersistenceMetadataGlobal( persId, _rawMetadata );
+        writePersistenceFromRaw( _rawMetadata );
+
+        return persId;
+    }
 }
 
-SPersistenceMetadata DatabaseManagerBase::getPersistenceSetMetadata( common_types::TContextId _ctxId ){
+void DatabaseManagerBase::writePersistenceMetadataGlobal( common_types::TPersistenceSetId _persId, const common_types::SPersistenceMetadataDescr & _meta ){
 
-    // TODO: implement me
+    bson_t * query = BCON_NEW( mongo_fields::persistence_set_metadata::PERSISTENCE_ID.c_str(), BCON_INT64( _persId ) );
+    bson_t * update = BCON_NEW( "$set", "{",
+            mongo_fields::persistence_set_metadata::PERSISTENCE_ID.c_str(), BCON_INT64( _persId ),
+            mongo_fields::persistence_set_metadata::CTX_ID.c_str(), BCON_INT32( _meta.contextId ),
+            mongo_fields::persistence_set_metadata::MISSION_ID.c_str(), BCON_INT32( _meta.missionId ),
+            mongo_fields::persistence_set_metadata::LAST_SESSION_ID.c_str(), BCON_INT32( _meta.lastRecordedSession ),
+            mongo_fields::persistence_set_metadata::UPDATE_STEP_MILLISEC.c_str(), BCON_INT64( _meta.timeStepIntervalMillisec ),
+            mongo_fields::persistence_set_metadata::SOURCE_TYPE.c_str(), BCON_UTF8( common_utils::convertPersistenceTypeToStr(_meta.sourceType).c_str() ),
+                            "}" );
+
+    const bool rt = mongoc_collection_update( m_tablePersistenceDescr,
+                                  MONGOC_UPDATE_UPSERT,
+                                  query,
+                                  update,
+                                  NULL,
+                                  NULL );
+
+    if( ! rt ){
+        VS_LOG_ERROR << "global metadata write failed" << endl;
+        bson_destroy( query );
+        bson_destroy( update );
+        return;
+    }
+
+    bson_destroy( query );
+    bson_destroy( update );
 }
 
+void DatabaseManagerBase::writePersistenceFromVideo( const common_types::SPersistenceMetadataVideo & _videoMetadata ){
+
+    bson_t * query = BCON_NEW( mongo_fields::persistence_set_metadata::PERSISTENCE_ID.c_str(), BCON_INT64( _videoMetadata.persistenceSetId ) );
+    bson_t * update = BCON_NEW( "$set", "{",
+            mongo_fields::persistence_set_metadata::PERSISTENCE_ID.c_str(), BCON_INT64( _videoMetadata.persistenceSetId ),
+            mongo_fields::persistence_set_metadata_video::SENSOR_ID.c_str(), BCON_INT64( _videoMetadata.recordedFromSensorId ),
+            "}" );
+
+    const bool rt = mongoc_collection_update( m_tablePersistenceDescr,
+                                  MONGOC_UPDATE_UPSERT,
+                                  query,
+                                  update,
+                                  NULL,
+                                  NULL );
+
+    if( ! rt ){
+        VS_LOG_ERROR << "global metadata write failed" << endl;
+        bson_destroy( query );
+        bson_destroy( update );
+        return;
+    }
+
+    bson_destroy( query );
+    bson_destroy( update );
+}
+
+void DatabaseManagerBase::writePersistenceFromDSS( const common_types::SPersistenceMetadataDSS & _type ){
+
+}
+
+void DatabaseManagerBase::writePersistenceFromRaw( const common_types::SPersistenceMetadataRaw & _type ){
+
+    // TODO: no raw metadata needed yet
+    return;
+}
+
+// persistence read
+std::vector<SPersistenceMetadata> DatabaseManagerBase::getPersistenceSetMetadata( common_types::TContextId _ctxId ){
+
+    bson_t * query = nullptr;
+    bson_t * sortOrder = nullptr;
+    if( _ctxId == common_vars::ALL_CONTEXT_ID ){
+        query = BCON_NEW( nullptr );
+        sortOrder = BCON_NEW( "sort", "{", mongo_fields::persistence_set_metadata::CTX_ID.c_str(), BCON_INT32 (-1), "}" );
+    }
+    else{
+        query = BCON_NEW( mongo_fields::persistence_set_metadata::CTX_ID.c_str(), BCON_INT32( _ctxId ));
+        sortOrder = BCON_NEW( nullptr );
+    }
+
+    mongoc_cursor_t * cursor = mongoc_collection_find_with_opts( m_tablePersistenceDescr,
+                                                                 query,
+                                                                 sortOrder,
+                                                                 nullptr );
+
+    std::vector<common_types::SPersistenceMetadata> out;
+    TContextId currentCtxId = 0;
+    int currentStoreIdx = -1;
+
+    const bson_t * doc;
+    while( mongoc_cursor_next( cursor, & doc ) ){
+
+        uint len;
+        bson_iter_t iter;
+
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::SOURCE_TYPE.c_str() );
+        const common_types::EPersistenceSourceType persType = common_utils::convertPersistenceTypeFromStr( bson_iter_utf8( & iter, & len ) );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::CTX_ID.c_str() );
+        const TContextId ctxId = bson_iter_int32( & iter );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::MISSION_ID.c_str() );
+        const TMissionId missionId = bson_iter_int32( & iter );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::UPDATE_STEP_MILLISEC.c_str() );
+        const int64_t updateStepMillisec = bson_iter_int64( & iter );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::LAST_SESSION_ID.c_str() );
+        const TSessionNum sessionNum = bson_iter_int64( & iter );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::PERSISTENCE_ID.c_str() );
+        const TPersistenceSetId persId = bson_iter_int64( & iter );
+
+        //
+        if( ctxId != currentCtxId ){
+            currentCtxId = ctxId;
+            out.resize( out.size() + 1 );
+            currentStoreIdx++;
+        }
+
+        //
+        switch( persType ){
+        case common_types::EPersistenceSourceType::VIDEO_SERVER : {
+
+
+            break;
+        }
+        case common_types::EPersistenceSourceType::AUTONOMOUS_RECORDER : {
+            common_types::SPersistenceMetadata & currentCtxMetadata = out[ currentStoreIdx ];
+            currentCtxMetadata.persistenceFromRaw.resize( currentCtxMetadata.persistenceFromRaw.size() + 1 );
+            common_types::SPersistenceMetadataRaw & currentRawMetadata = currentCtxMetadata.persistenceFromRaw.back();
+
+            // video specific parameters
+            const bool rt = getPersistenceFromRaw( persId, currentRawMetadata );
+
+            // global parameters
+            currentRawMetadata.persistenceSetId = persId;
+            currentRawMetadata.contextId = ctxId;
+            currentRawMetadata.missionId = missionId;
+            currentRawMetadata.timeStepIntervalMillisec = updateStepMillisec;
+            currentRawMetadata.lastRecordedSession = sessionNum;
+            currentRawMetadata.sourceType = persType;
+            // ...
+
+            break;
+        }
+        case common_types::EPersistenceSourceType::DSS : {
+
+            break;
+        }
+        default : {
+
+        }
+        }
+    }
+
+    mongoc_cursor_destroy( cursor );
+    bson_destroy( query );
+
+    return out;
+}
+
+std::vector<common_types::SPersistenceMetadata> DatabaseManagerBase::getPersistenceSetMetadata( common_types::TPersistenceSetId _persId ){
+
+    // make query
+    bson_t * query = BCON_NEW( mongo_fields::persistence_set_metadata::PERSISTENCE_ID.c_str(), BCON_INT32( _persId ));
+
+    mongoc_cursor_t * cursor = mongoc_collection_find_with_opts( m_tablePersistenceDescr,
+                                                                 query,
+                                                                 nullptr,
+                                                                 nullptr );
+    // check
+    if( ! mongoc_cursor_more( cursor ) ){
+        return std::vector<common_types::SPersistenceMetadata>();
+    }
+
+    // read
+    std::vector<common_types::SPersistenceMetadata> out;
+
+    const bson_t * doc;
+    while( mongoc_cursor_next( cursor, & doc ) ){
+
+        uint len;
+        bson_iter_t iter;
+
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::SOURCE_TYPE.c_str() );
+        const common_types::EPersistenceSourceType persType = common_utils::convertPersistenceTypeFromStr( bson_iter_utf8( & iter, & len ) );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::CTX_ID.c_str() );
+        const TContextId ctxId = bson_iter_int32( & iter );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::MISSION_ID.c_str() );
+        const TMissionId missionId = bson_iter_int32( & iter );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::UPDATE_STEP_MILLISEC.c_str() );
+        const int64_t updateStepMillisec = bson_iter_int64( & iter );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::LAST_SESSION_ID.c_str() );
+        const TSessionNum sessionNum = bson_iter_int64( & iter );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::PERSISTENCE_ID.c_str() );
+        const TPersistenceSetId persId = bson_iter_int64( & iter );
+
+        //
+        out.resize( out.size() + 1 );
+
+        //
+        switch( persType ){
+        case common_types::EPersistenceSourceType::VIDEO_SERVER : {
+
+
+            break;
+        }
+        case common_types::EPersistenceSourceType::AUTONOMOUS_RECORDER : {
+            common_types::SPersistenceMetadata & currentCtxMetadata = out[ 0 ];
+            currentCtxMetadata.persistenceFromRaw.resize( currentCtxMetadata.persistenceFromRaw.size() + 1 );
+            common_types::SPersistenceMetadataRaw & currentRawMetadata = currentCtxMetadata.persistenceFromRaw.back();
+
+            // raw specific parameters
+            const bool rt = getPersistenceFromRaw( persId, currentRawMetadata );
+
+            // global parameters
+            currentRawMetadata.persistenceSetId = persId;
+            currentRawMetadata.contextId = ctxId;
+            currentRawMetadata.missionId = missionId;
+            currentRawMetadata.timeStepIntervalMillisec = updateStepMillisec;
+            currentRawMetadata.lastRecordedSession = sessionNum;
+            currentRawMetadata.sourceType = persType;
+            // ...
+
+            break;
+        }
+        case common_types::EPersistenceSourceType::DSS : {
+
+            break;
+        }
+        default : {
+
+        }
+        }
+    }
+
+    mongoc_cursor_destroy( cursor );
+    bson_destroy( query );
+
+    return out;
+}
+
+bool DatabaseManagerBase::getPersistenceFromVideo( common_types::TPersistenceSetId _persId,
+                                                   SPersistenceMetadataVideo & _meta ){
+
+    // query
+    bson_t * query = BCON_NEW( mongo_fields::persistence_set_metadata::PERSISTENCE_ID, BCON_INT32( _persId ) );
+    mongoc_cursor_t * cursor = mongoc_collection_find(  m_tablePersistenceFromVideo,
+                                                        MONGOC_QUERY_NONE,
+                                                        0,
+                                                        0,
+                                                        1000000, // 10000 ~= inf
+                                                        query,
+                                                        nullptr,
+                                                        nullptr );
+
+    // check existence
+    if( ! mongoc_cursor_more(cursor) ){
+        VS_LOG_ERROR << PRINT_HEADER << " such persistence id (video) not found: " << _persId << endl;
+        return false;
+    }
+
+    // get data
+    const bson_t * doc;
+    while( mongoc_cursor_next( cursor, & doc ) ){
+
+        uint len;
+        bson_iter_t iter;
+
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata_video::SENSOR_ID.c_str() );
+        _meta.recordedFromSensorId = bson_iter_int32( & iter );
+    }
+
+    mongoc_cursor_destroy( cursor );
+    bson_destroy( query );
+
+    return true;
+}
+
+bool DatabaseManagerBase::getPersistenceFromDSS( common_types::TPersistenceSetId _persId,
+                                                 common_types::SPersistenceMetadataDSS & _meta ){
+
+
+
+}
+
+bool DatabaseManagerBase::getPersistenceFromRaw( common_types::TPersistenceSetId _persId,
+                                                 common_types::SPersistenceMetadataRaw & _meta ){
+
+    // TODO: no raw metadata needed yet
+    return true;
+}
+
+// persistence delete
 void DatabaseManagerBase::removePersistenceSetMetadata( common_types::TPersistenceSetId _id ){
 
     // TODO: implement me
+}
+
+void DatabaseManagerBase::removePersistenceSetMetadata( common_types::TContextId _ctxId ){
+
+    // TODO: implement me
+}
+
+// persistence utils
+bool DatabaseManagerBase::isPersistenceMetadataValid( common_types::TPersistenceSetId _persId, const common_types::SPersistenceMetadataDescr & _meta ){
+
+    // for instance: forbid CtxId changing
+
+    const vector<SPersistenceMetadata> metadata = getPersistenceSetMetadata( _persId );
+
+
+
+    VS_LOG_ERROR << PRINT_HEADER << " such persistence id not found in global metadata" << endl;
+
+
+
+    return true;
+}
+
+common_types::TPersistenceSetId DatabaseManagerBase::createNewPersistenceId(){
+
+    const vector<SPersistenceMetadata> metadatas = getPersistenceSetMetadata();
+    if( ! metadatas.empty() ){
+        TPersistenceSetId newId = SPersistenceMetadataDescr::INVALID_PERSISTENCE_ID;
+        return newId;
+    }
+    else{
+        const TPersistenceSetId newId = 1;
+        return newId;
+    }
 }
 
 std::vector<SEventsSessionInfo> DatabaseManagerBase::getPersistenceSetSessions( TPersistenceSetId _persId ){
@@ -430,6 +815,8 @@ std::vector<SObjectStep> DatabaseManagerBase::getSessionSteps( TPersistenceSetId
 // -------------------------------------------------------------------------------------
 // WAL
 // -------------------------------------------------------------------------------------
+
+// wal operations
 bool DatabaseManagerBase::writeClientOperation( const common_types::SWALClientOperation & _operation ){
 
     bson_t * query = BCON_NEW( mongo_fields::wal_client_operations::UNIQUE_KEY.c_str(), BCON_UTF8( _operation.uniqueKey.c_str() ) );
@@ -598,6 +985,7 @@ void DatabaseManagerBase::removeClientOperation( std::string _uniqueKey ){
     bson_destroy( query );
 }
 
+// wal system processes
 bool DatabaseManagerBase::writeProcessEvent( const common_types::SWALProcessEvent & _event, bool _launch ){
 
     bson_t * doc = BCON_NEW( mongo_fields::wal_process_events::PID.c_str(), BCON_INT32( _event.pid ),
@@ -801,6 +1189,7 @@ void DatabaseManagerBase::removeProcessEvent( common_types::TPid _pid ){
     bson_destroy( query );
 }
 
+// wal users
 bool DatabaseManagerBase::writeUserRegistration( const common_types::SWALUserRegistration & _registration ){
 
 }

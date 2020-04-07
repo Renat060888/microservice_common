@@ -79,6 +79,7 @@ SOURCES += \
         system/threaded_multitask_service.cpp \
         system/wal.cpp \
         unit_tests/communication_tests.cpp \
+    unit_tests/storage_tests.cpp \
         unit_tests/system_tests.cpp \
     system/system_environment_facade.cpp
 
@@ -126,6 +127,7 @@ HEADERS += \
     system/threaded_multitask_service.h \
     system/wal.h \
     unit_tests/communication_tests.h \
+    unit_tests/storage_tests.h \
     unit_tests/system_tests.h \
     analyze/dummy.h \
     system/system_environment_facade.h
