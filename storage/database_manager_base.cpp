@@ -222,12 +222,12 @@ bool DatabaseManagerBase::writeTrajectoryData( TPersistenceSetId _persId, const 
 
         bson_t * doc = BCON_NEW( mongo_fields::analytic::detected_object::OBJRERP_ID.c_str(), BCON_INT64( traj.objId ),
                                  mongo_fields::analytic::detected_object::STATE.c_str(), BCON_INT32( (int32_t)(traj.state) ),
-                                 mongo_fields::analytic::detected_object::ASTRO_TIME.c_str(), BCON_INT64( traj.timestampMillisec ),
+                                 mongo_fields::analytic::detected_object::ASTRO_TIME.c_str(), BCON_INT64( traj.astroTimeMillisec ),
                                  mongo_fields::analytic::detected_object::LOGIC_TIME.c_str(), BCON_INT64( traj.logicTime ),
-                                 mongo_fields::analytic::detected_object::SESSION.c_str(), BCON_INT32( traj.session ),
+                                 mongo_fields::analytic::detected_object::SESSION.c_str(), BCON_INT32( traj.sessionNum ),
                                  mongo_fields::analytic::detected_object::LAT.c_str(), BCON_DOUBLE( traj.latDeg ),
                                  mongo_fields::analytic::detected_object::LON.c_str(), BCON_DOUBLE( traj.lonDeg ),
-                                 mongo_fields::analytic::detected_object::YAW.c_str(), BCON_DOUBLE( traj.heading )
+                                 mongo_fields::analytic::detected_object::YAW.c_str(), BCON_DOUBLE( traj.yawDeg )
                                );
 
         mongoc_bulk_operation_insert( bulkedWrite, doc );
@@ -258,13 +258,13 @@ std::vector<SPersistenceTrajectory> DatabaseManagerBase::readTrajectoryData( con
     // TODO: clarify load mode - only one step, steps range, whole data
 
     if( _filter.minLogicStep == _filter.maxLogicStep ){
-        query = BCON_NEW( "$and", "[", "{", mongo_fields::analytic::detected_object::SESSION.c_str(), BCON_INT32(_filter.sessionId), "}",
+        query = BCON_NEW( "$and", "[", "{", mongo_fields::analytic::detected_object::SESSION.c_str(), BCON_INT32(_filter.sessionNum), "}",
                                        "{", mongo_fields::analytic::detected_object::LOGIC_TIME.c_str(), "{", "$eq", BCON_INT64(_filter.minLogicStep), "}", "}",
                                   "]"
                         );
     }
     else if( _filter.minLogicStep != 0 || _filter.maxLogicStep != 0 ){
-        query = BCON_NEW( "$and", "[", "{", mongo_fields::analytic::detected_object::SESSION.c_str(), BCON_INT32(_filter.sessionId), "}",
+        query = BCON_NEW( "$and", "[", "{", mongo_fields::analytic::detected_object::SESSION.c_str(), BCON_INT32(_filter.sessionNum), "}",
                                        "{", mongo_fields::analytic::detected_object::LOGIC_TIME.c_str(), "{", "$gte", BCON_INT64(_filter.minLogicStep), "}", "}",
                                        "{", mongo_fields::analytic::detected_object::LOGIC_TIME.c_str(), "{", "$lte", BCON_INT64(_filter.maxLogicStep), "}", "}",
                                         "]"
@@ -295,11 +295,11 @@ std::vector<SPersistenceTrajectory> DatabaseManagerBase::readTrajectoryData( con
         bson_iter_init_find( & iter, doc, mongo_fields::analytic::detected_object::OBJRERP_ID.c_str() );
         detectedObject.objId = bson_iter_int64( & iter );
         bson_iter_init_find( & iter, doc, mongo_fields::analytic::detected_object::ASTRO_TIME.c_str() );
-        detectedObject.timestampMillisec = bson_iter_int64( & iter );
+        detectedObject.astroTimeMillisec = bson_iter_int64( & iter );
         bson_iter_init_find( & iter, doc, mongo_fields::analytic::detected_object::LOGIC_TIME.c_str() );
         detectedObject.logicTime = bson_iter_int64( & iter );
         bson_iter_init_find( & iter, doc, mongo_fields::analytic::detected_object::SESSION.c_str() );
-        detectedObject.session = bson_iter_int32( & iter );
+        detectedObject.sessionNum = bson_iter_int32( & iter );
         bson_iter_init_find( & iter, doc, mongo_fields::analytic::detected_object::STATE.c_str() );
         detectedObject.state = (SPersistenceObj::EState)bson_iter_int32( & iter );
 
@@ -309,7 +309,7 @@ std::vector<SPersistenceTrajectory> DatabaseManagerBase::readTrajectoryData( con
             bson_iter_init_find( & iter, doc, mongo_fields::analytic::detected_object::LON.c_str() );
             detectedObject.lonDeg = bson_iter_double( & iter );
             bson_iter_init_find( & iter, doc, mongo_fields::analytic::detected_object::YAW.c_str() );
-            detectedObject.heading = bson_iter_double( & iter );
+            detectedObject.yawDeg = bson_iter_double( & iter );
         }
 
         out.push_back( detectedObject );
@@ -392,6 +392,14 @@ TPersistenceSetId DatabaseManagerBase::writePersistenceSetMetadata( const common
 }
 
 void DatabaseManagerBase::writePersistenceMetadataGlobal( common_types::TPersistenceSetId _persId, const common_types::SPersistenceMetadataDescr & _meta ){
+
+    // TODO: temporary input validation
+    assert( _meta.contextId > 0
+            && _meta.lastRecordedSession > 0
+            && _meta.timeStepIntervalMillisec > 0
+            && _meta.persistenceSetId > 0
+            && _meta.sourceType != EPersistenceSourceType::UNDEFINED
+            && "global metadata validation" );
 
     bson_t * query = BCON_NEW( mongo_fields::persistence_set_metadata::PERSISTENCE_ID.c_str(), BCON_INT64( _persId ) );
     bson_t * update = BCON_NEW( "$set", "{",
@@ -495,7 +503,7 @@ std::vector<SPersistenceMetadata> DatabaseManagerBase::getPersistenceSetMetadata
         bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::UPDATE_STEP_MILLISEC.c_str() );
         const int64_t updateStepMillisec = bson_iter_int64( & iter );
         bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::LAST_SESSION_ID.c_str() );
-        const TSessionNum sessionNum = bson_iter_int64( & iter );
+        const TSessionNum sessionNum = bson_iter_int32( & iter );
         bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::PERSISTENCE_ID.c_str() );
         const TPersistenceSetId persId = bson_iter_int64( & iter );
 
@@ -548,7 +556,7 @@ std::vector<SPersistenceMetadata> DatabaseManagerBase::getPersistenceSetMetadata
     return out;
 }
 
-std::vector<common_types::SPersistenceMetadata> DatabaseManagerBase::getPersistenceSetMetadata( common_types::TPersistenceSetId _persId ){
+common_types::SPersistenceMetadata DatabaseManagerBase::getPersistenceSetMetadata( common_types::TPersistenceSetId _persId ){
 
     // make query
     bson_t * query = BCON_NEW( mongo_fields::persistence_set_metadata::PERSISTENCE_ID.c_str(), BCON_INT32( _persId ));
@@ -559,11 +567,11 @@ std::vector<common_types::SPersistenceMetadata> DatabaseManagerBase::getPersiste
                                                                  nullptr );
     // check
     if( ! mongoc_cursor_more( cursor ) ){
-        return std::vector<common_types::SPersistenceMetadata>();
+        return common_types::SPersistenceMetadata();
     }
 
     // read
-    std::vector<common_types::SPersistenceMetadata> out;
+    common_types::SPersistenceMetadata out;
 
     const bson_t * doc;
     while( mongoc_cursor_next( cursor, & doc ) ){
@@ -584,10 +592,7 @@ std::vector<common_types::SPersistenceMetadata> DatabaseManagerBase::getPersiste
         bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::PERSISTENCE_ID.c_str() );
         const TPersistenceSetId persId = bson_iter_int64( & iter );
 
-        //
-        out.resize( out.size() + 1 );
-
-        //
+        // only ONE of this types will be appear
         switch( persType ){
         case common_types::EPersistenceSourceType::VIDEO_SERVER : {
 
@@ -595,9 +600,8 @@ std::vector<common_types::SPersistenceMetadata> DatabaseManagerBase::getPersiste
             break;
         }
         case common_types::EPersistenceSourceType::AUTONOMOUS_RECORDER : {
-            common_types::SPersistenceMetadata & currentCtxMetadata = out[ 0 ];
-            currentCtxMetadata.persistenceFromRaw.resize( currentCtxMetadata.persistenceFromRaw.size() + 1 );
-            common_types::SPersistenceMetadataRaw & currentRawMetadata = currentCtxMetadata.persistenceFromRaw.back();
+            out.persistenceFromRaw.resize( out.persistenceFromRaw.size() + 1 );
+            common_types::SPersistenceMetadataRaw & currentRawMetadata = out.persistenceFromRaw.back();
 
             // raw specific parameters
             const bool rt = getPersistenceFromRaw( persId, currentRawMetadata );
@@ -696,7 +700,7 @@ bool DatabaseManagerBase::isPersistenceMetadataValid( common_types::TPersistence
 
     // for instance: forbid CtxId changing
 
-    const vector<SPersistenceMetadata> metadata = getPersistenceSetMetadata( _persId );
+    const SPersistenceMetadata metadata = getPersistenceSetMetadata( _persId );
 
 
 

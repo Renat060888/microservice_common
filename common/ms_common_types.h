@@ -125,36 +125,40 @@ struct SPersistenceObj {
         ABSENT,
         UNDEFINED
     };
+
+    TContextId ctxId;
+    TMissionId missionId;
+    TObjectId objId;
+    EState state;
+    TSessionNum sessionNum;
+    TLogicStep logicTime;
+    int64_t astroTimeMillisec;
 };
 
 struct SPersistenceTrajectory : SPersistenceObj {
 
-    TObjectId objId;
-    EState state;
-    TSessionNum session;
-    TLogicStep logicTime;
-    int64_t timestampMillisec;
     float latDeg;
     float lonDeg;
-    double heading;
+    double yawDeg;
 };
 
 struct SPersistenceWeather : SPersistenceObj {
 
-    // TODO: do
+    double windSpeed;
+    double humidity;
 };
 
 struct SPersistenceSetFilter {
     SPersistenceSetFilter()
         : persistenceSetId(-1)
-        , sessionId(0)
+        , sessionNum(0)
         , maxLogicStep(0)
         , minLogicStep(0)
     {}
 
     TPersistenceSetId persistenceSetId;
 
-    TSessionNum sessionId;
+    TSessionNum sessionNum;
     TLogicStep maxLogicStep;
     TLogicStep minLogicStep;
 };

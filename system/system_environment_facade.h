@@ -13,6 +13,7 @@ public:
     struct SServiceLocator {
         SServiceLocator()
         {}        
+
     };
 
     struct SInitSettings {

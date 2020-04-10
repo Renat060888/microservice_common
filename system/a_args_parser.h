@@ -28,7 +28,7 @@ public:
     };
 
     bool init( const SInitSettings & _settings ){
-        assert( _settings.commandConvertor );
+        assert( _settings.commandConvertor );        
 
         m_settings = _settings;
 

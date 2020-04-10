@@ -25,6 +25,7 @@ public:
         std::string host;
         uint16_t port;
         std::string databaseName;
+        std::string projectPrefix;
     };
 
     static DatabaseManagerBase * getInstance();
@@ -45,7 +46,7 @@ public:
     common_types::TPersistenceSetId writePersistenceSetMetadata( const common_types::SPersistenceMetadataDSS & _type );
     common_types::TPersistenceSetId writePersistenceSetMetadata( const common_types::SPersistenceMetadataRaw & _rawMetadata );
     std::vector<common_types::SPersistenceMetadata> getPersistenceSetMetadata( common_types::TContextId _ctxId = common_vars::ALL_CONTEXT_ID );
-    std::vector<common_types::SPersistenceMetadata> getPersistenceSetMetadata( common_types::TPersistenceSetId _persId );
+    common_types::SPersistenceMetadata getPersistenceSetMetadata( common_types::TPersistenceSetId _persId );
     void removePersistenceSetMetadata( common_types::TPersistenceSetId _id );
     void removePersistenceSetMetadata( common_types::TContextId _ctxId );
 

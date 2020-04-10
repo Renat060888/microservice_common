@@ -33,6 +33,7 @@ LIBS += \
     -lrabbitmq \
     -lnvidia-ml \
     -lgtop-2.0 \
+#    -lgtest \
     -lboost_filesystem \
     -lboost_program_options \
 
