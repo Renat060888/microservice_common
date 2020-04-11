@@ -34,7 +34,7 @@ DatabaseManagerBase::~DatabaseManagerBase()
 {    
     mongoc_cleanup();
 
-    for( mongoc_collection_t * collect : m_allCollections ){
+    for( mongoc_collection_t * collect : m_allTables ){
         mongoc_collection_destroy( collect );
     }
     mongoc_database_destroy( m_database );
@@ -113,12 +113,13 @@ bool DatabaseManagerBase::init( SInitSettings _settings ){
         _settings.databaseName.c_str(),
         (string("video_server_") + mongo_fields::persistence_set_metadata_dss::COLLECTION_NAME).c_str() );
 
-    m_allCollections.push_back( m_tableWALClientOperations );
-    m_allCollections.push_back( m_tableWALProcessEvents );
-    m_allCollections.push_back( m_tablePersistenceDescr );
-    m_allCollections.push_back( m_tablePersistenceFromVideo );
-    m_allCollections.push_back( m_tablePersistenceFromRaw );
-    m_allCollections.push_back( m_tablePersistenceFromDSS );
+    m_allTables.push_back( m_tableWALClientOperations );
+    m_allTables.push_back( m_tableWALProcessEvents );
+    m_allTables.push_back( m_tableWALUserRegistrations );
+    m_allTables.push_back( m_tablePersistenceDescr );
+    m_allTables.push_back( m_tablePersistenceFromVideo );
+    m_allTables.push_back( m_tablePersistenceFromRaw );
+    m_allTables.push_back( m_tablePersistenceFromDSS );
 
     VS_LOG_INFO << PRINT_HEADER << " instance connected to [" << _settings.host << "]" << endl;
     return true;
@@ -169,43 +170,32 @@ inline bool DatabaseManagerBase::createIndex( const std::string & _tableName, co
     return false;
 }
 
-inline mongoc_collection_t * DatabaseManagerBase::getAnalyticContextTable( TPersistenceSetId _persId ){
+inline void DatabaseManagerBase::createPayloadTableRef( common_types::TPersistenceSetId _persId, const std::string _tableName ){
 
-    assert( _persId > 0 );
+    mongoc_collection_t * contextTable = mongoc_client_get_collection(
+            m_mongoClient,
+            m_settings.databaseName.c_str(),
+            _tableName.c_str() );
 
-    mongoc_collection_t * contextTable = nullptr;
-    auto iter = m_contextCollections.find( _persId );
-    if( iter != m_contextCollections.end() ){
-        contextTable = iter->second;
-    }
-    else{
-        const string tableName = getTableName(_persId);
-        contextTable = mongoc_client_get_collection(    m_mongoClient,
-                                                        m_settings.databaseName.c_str(),
-                                                        tableName.c_str() );
+    // TODO: each time when creating ref ?
+    createIndex( _tableName, {mongo_fields::analytic::detected_object::SESSION,
+                             mongo_fields::analytic::detected_object::LOGIC_TIME}
+               );
 
-        createIndex( tableName, {mongo_fields::analytic::detected_object::SESSION,
-                                 mongo_fields::analytic::detected_object::LOGIC_TIME}
-                   );
+    m_tablesByPersistenceId.insert( {_persId, contextTable} );
+    m_tableNameByPersistenceId.insert( {_persId, _tableName} );
+}
 
-        // TODO: add record to context info
+inline mongoc_collection_t * DatabaseManagerBase::getPayloadTableRef( TPersistenceSetId _persId ){
 
-        m_contextCollections.insert( {_persId, contextTable} );
-    }
-
-    return contextTable;
+    assert( _persId > 0 && m_tablesByPersistenceId.find(_persId) != m_tablesByPersistenceId.end() );
+    return m_tablesByPersistenceId[ _persId ];
 }
 
 inline string DatabaseManagerBase::getTableName( common_types::TPersistenceSetId _persId ){
 
-    const string name = string("video_server_") +
-                        mongo_fields::analytic::COLLECTION_NAME +
-                        "_" +
-                        std::to_string(_persId);
-//                        "_" +
-//                        std::to_string(_sensorId);
-
-    return name;
+    assert( m_tableNameByPersistenceId.find(_persId) != m_tableNameByPersistenceId.end() );
+    return m_tableNameByPersistenceId[ _persId ];
 }
 
 // -------------------------------------------------------------------------------------
@@ -213,11 +203,11 @@ inline string DatabaseManagerBase::getTableName( common_types::TPersistenceSetId
 // -------------------------------------------------------------------------------------
 bool DatabaseManagerBase::writeTrajectoryData( TPersistenceSetId _persId, const vector<SPersistenceTrajectory> & _data ){
 
-    //
-    mongoc_collection_t * contextTable = getAnalyticContextTable( _persId );
+    // get table
+    mongoc_collection_t * contextTable = getPayloadTableRef( _persId );
     mongoc_bulk_operation_t * bulkedWrite = mongoc_collection_create_bulk_operation( contextTable, false, NULL );
 
-    //
+    // build data into one set
     for( const SPersistenceTrajectory & traj : _data ){
 
         bson_t * doc = BCON_NEW( mongo_fields::analytic::detected_object::OBJRERP_ID.c_str(), BCON_INT64( traj.objId ),
@@ -234,7 +224,7 @@ bool DatabaseManagerBase::writeTrajectoryData( TPersistenceSetId _persId, const 
         bson_destroy( doc );
     }
 
-    //
+    // write
     bson_error_t error;
     const bool rt = mongoc_bulk_operation_execute( bulkedWrite, NULL, & error );
     if( 0 == rt ){
@@ -249,7 +239,7 @@ bool DatabaseManagerBase::writeTrajectoryData( TPersistenceSetId _persId, const 
 
 std::vector<SPersistenceTrajectory> DatabaseManagerBase::readTrajectoryData( const SPersistenceSetFilter & _filter ){
 
-    mongoc_collection_t * contextTable = getAnalyticContextTable( _filter.persistenceSetId );
+    mongoc_collection_t * contextTable = getPayloadTableRef( _filter.persistenceSetId );
     assert( contextTable );
 
     bson_t * projection = nullptr;
@@ -325,7 +315,7 @@ void DatabaseManagerBase::removeTotalData( const SPersistenceSetFilter & _filter
 
     // TODO: remove by logic step range
 
-    mongoc_collection_t * contextTable = getAnalyticContextTable( _filter.persistenceSetId );
+    mongoc_collection_t * contextTable = getPayloadTableRef( _filter.persistenceSetId );
     assert( contextTable );
 
     bson_t * query = BCON_NEW( nullptr );
@@ -368,11 +358,19 @@ TPersistenceSetId DatabaseManagerBase::writePersistenceSetMetadata( const common
 
 TPersistenceSetId DatabaseManagerBase::writePersistenceSetMetadata( const common_types::SPersistenceMetadataRaw & _rawMetadata ){
 
+    const string payloadTableName = string("hometest_")
+            + string("raw_")
+            + string("traj_")
+            + string("ctx")
+            + std::to_string(_rawMetadata.contextId)
+            + string("_mission")
+            + std::to_string(_rawMetadata.missionId);
+
     // update existing PersistenceId ( if it valid of course )
     if( _rawMetadata.persistenceSetId != SPersistenceMetadataDescr::INVALID_PERSISTENCE_ID ){
 
         if( isPersistenceMetadataValid(_rawMetadata.persistenceSetId, _rawMetadata) ){
-            writePersistenceMetadataGlobal( _rawMetadata.persistenceSetId, _rawMetadata );
+            writePersistenceMetadataGlobal( _rawMetadata.persistenceSetId, payloadTableName, _rawMetadata );
             writePersistenceFromRaw( _rawMetadata );
 
             return _rawMetadata.persistenceSetId;
@@ -384,20 +382,24 @@ TPersistenceSetId DatabaseManagerBase::writePersistenceSetMetadata( const common
     // create new persistence record
     else{
         const TPersistenceSetId persId = createNewPersistenceId();
-        writePersistenceMetadataGlobal( persId, _rawMetadata );
+
+        writePersistenceMetadataGlobal( persId, payloadTableName, _rawMetadata );
         writePersistenceFromRaw( _rawMetadata );
+        createPayloadTableRef( persId, payloadTableName );
 
         return persId;
     }
 }
 
-void DatabaseManagerBase::writePersistenceMetadataGlobal( common_types::TPersistenceSetId _persId, const common_types::SPersistenceMetadataDescr & _meta ){
+void DatabaseManagerBase::writePersistenceMetadataGlobal( const common_types::TPersistenceSetId _persId,
+                                                          const std::string _payloadTableName,
+                                                          const common_types::SPersistenceMetadataDescr & _meta ){
 
     // TODO: temporary input validation
     assert( _meta.contextId > 0
             && _meta.lastRecordedSession > 0
             && _meta.timeStepIntervalMillisec > 0
-            && _meta.persistenceSetId > 0
+            && _persId > 0
             && _meta.sourceType != EPersistenceSourceType::UNDEFINED
             && "global metadata validation" );
 
@@ -409,6 +411,7 @@ void DatabaseManagerBase::writePersistenceMetadataGlobal( common_types::TPersist
             mongo_fields::persistence_set_metadata::LAST_SESSION_ID.c_str(), BCON_INT32( _meta.lastRecordedSession ),
             mongo_fields::persistence_set_metadata::UPDATE_STEP_MILLISEC.c_str(), BCON_INT64( _meta.timeStepIntervalMillisec ),
             mongo_fields::persistence_set_metadata::SOURCE_TYPE.c_str(), BCON_UTF8( common_utils::convertPersistenceTypeToStr(_meta.sourceType).c_str() ),
+            mongo_fields::persistence_set_metadata::PAYLOAD_TABLE_NAME.c_str(), BCON_UTF8( _payloadTableName.c_str() ),
                             "}" );
 
     const bool rt = mongoc_collection_update( m_tablePersistenceDescr,
@@ -437,7 +440,7 @@ void DatabaseManagerBase::writePersistenceFromVideo( const common_types::SPersis
             mongo_fields::persistence_set_metadata_video::SENSOR_ID.c_str(), BCON_INT64( _videoMetadata.recordedFromSensorId ),
             "}" );
 
-    const bool rt = mongoc_collection_update( m_tablePersistenceDescr,
+    const bool rt = mongoc_collection_update( m_tablePersistenceFromVideo,
                                   MONGOC_UPDATE_UPSERT,
                                   query,
                                   update,
@@ -506,6 +509,11 @@ std::vector<SPersistenceMetadata> DatabaseManagerBase::getPersistenceSetMetadata
         const TSessionNum sessionNum = bson_iter_int32( & iter );
         bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::PERSISTENCE_ID.c_str() );
         const TPersistenceSetId persId = bson_iter_int64( & iter );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::PAYLOAD_TABLE_NAME.c_str() );
+        const std::string payloadTableName = bson_iter_utf8( & iter, & len );
+
+        // (for write operations)
+        createPayloadTableRef( persId, payloadTableName );
 
         //
         if( ctxId != currentCtxId ){
@@ -777,7 +785,7 @@ std::vector<SEventsSessionInfo> DatabaseManagerBase::getPersistenceSetSessions( 
 
 std::vector<SObjectStep> DatabaseManagerBase::getSessionSteps( TPersistenceSetId _persId, TSessionNum _sesNum ){
 
-    mongoc_collection_t * contextTable = getAnalyticContextTable( _persId );
+    mongoc_collection_t * contextTable = getPayloadTableRef( _persId );
     assert( contextTable );
 
     bson_t * pipeline = BCON_NEW( "pipeline", "[",

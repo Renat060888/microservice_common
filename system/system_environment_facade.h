@@ -51,8 +51,8 @@ protected:
 
 
 private:
-    bool isApplicationInstanceUnique();
-    void writePidFile();
+    bool isApplicationInstanceUnique( const std::string & _lockFileFullPath );
+    void writePidFile( const std::string & _pidFileFullPath );
 
     // wal persistence functional is a part of 'SystemEnvironment' so far
     virtual bool write( const common_types::SWALClientOperation & _clientOperation ) override;

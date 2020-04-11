@@ -21,6 +21,7 @@ static const std::string USER_ID = "user_id";
 static const std::string USER_IP = "user_ip";
 static const std::string USER_PID = "user_pid";
 static const std::string CONTEXT_NAME = "ctx_name";
+static const std::string MISSION_NAME = "mission_name";
 
 }
 
@@ -58,6 +59,7 @@ namespace persistence_set_metadata {
     const std::string LAST_SESSION_ID = "last_session_id";
     const std::string UPDATE_STEP_MILLISEC = "update_step_millisec";
     const std::string SOURCE_TYPE = "source_type";
+    const std::string PAYLOAD_TABLE_NAME = "payload_table_name";
 }
 
 namespace persistence_set_metadata_video {

@@ -34,7 +34,7 @@ bool SystemEnvironmentFacade::init( SInitSettings _settings ){
 
     m_state.settings = _settings;
 
-    if( ! isApplicationInstanceUnique() ){
+    if( ! isApplicationInstanceUnique(m_state.settings.uniqueLockFileFullPath) ){
         return false;
     }
 
@@ -72,7 +72,7 @@ bool SystemEnvironmentFacade::init( SInitSettings _settings ){
         PROCESS_LAUNCHER.kill( pid );
     }
 
-    writePidFile();
+    writePidFile( m_state.settings.uniqueLockFileFullPath );
 
     if( ! initDerive() ){
         return false;
@@ -87,15 +87,15 @@ WriteAheadLogger * SystemEnvironmentFacade::serviceForWriteAheadLogging(){
     return & m_wal;
 }
 
-bool SystemEnvironmentFacade::isApplicationInstanceUnique(){
+bool SystemEnvironmentFacade::isApplicationInstanceUnique( const std::string & _lockFileFullPath ){
 
-    const int pidFile = ::open( m_state.settings.uniqueLockFileFullPath.c_str(), O_CREAT | O_RDWR | O_TRUNC, 0666 );
+    const int pidFile = ::open( _lockFileFullPath.c_str(), O_CREAT | O_RDWR | O_TRUNC, 0666 );
 
     const int rc = ::flock( pidFile, LOCK_EX | LOCK_NB );
     if( rc ){
         if( EWOULDBLOCK == errno ){
             VS_LOG_ERROR << "CRITICAL: another instance of Video Server already is running."
-                      << " (file already locked: " << m_state.settings.uniqueLockFileFullPath << ")"
+                      << " (file already locked: " << _lockFileFullPath << ")"
                       << " Abort"
                       << endl;
             return false;
@@ -105,14 +105,14 @@ bool SystemEnvironmentFacade::isApplicationInstanceUnique(){
     return true;
 }
 
-void SystemEnvironmentFacade::writePidFile(){
+void SystemEnvironmentFacade::writePidFile( const std::string & _pidFileFullPath ){
 
     const char * pidStr = std::to_string( ::getpid() ).c_str();
     VS_LOG_INFO << "write pid [" << pidStr << "]"
-             << " to pid file [" << m_state.settings.uniqueLockFileFullPath << "]"
+             << " to pid file [" << _pidFileFullPath << "]"
              << endl;
 
-    ofstream pidFile( m_state.settings.uniqueLockFileFullPath, std::ios::out | std::ios::trunc );
+    ofstream pidFile( _pidFileFullPath, std::ios::out | std::ios::trunc );
     if( ! pidFile.is_open() ){
         VS_LOG_ERROR << "cannot open pid file for write" << endl;
     }

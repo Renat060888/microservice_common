@@ -79,11 +79,12 @@ private:
     DatabaseManagerBase( const DatabaseManagerBase & _inst ) = delete;
     DatabaseManagerBase & operator=( const DatabaseManagerBase & _inst ) = delete;
 
-    inline bool createIndex( const std::string & _tableName, const std::vector<std::string> & _fieldNames );
-    inline mongoc_collection_t * getAnalyticContextTable( common_types::TPersistenceSetId _persId );
+    inline void createPayloadTableRef( common_types::TPersistenceSetId _persId, const std::string _tableName );
+    inline mongoc_collection_t * getPayloadTableRef( common_types::TPersistenceSetId _persId );
     inline std::string getTableName( common_types::TPersistenceSetId _persId );
+    inline bool createIndex( const std::string & _tableName, const std::vector<std::string> & _fieldNames );
 
-    void writePersistenceMetadataGlobal( common_types::TPersistenceSetId _persId, const common_types::SPersistenceMetadataDescr & _meta );
+    void writePersistenceMetadataGlobal( const common_types::TPersistenceSetId _persId, const std::string _payloadTableName, const common_types::SPersistenceMetadataDescr & _meta );
     void writePersistenceFromVideo( const common_types::SPersistenceMetadataVideo & _videoMetadata );
     void writePersistenceFromDSS( const common_types::SPersistenceMetadataDSS & _type );
     void writePersistenceFromRaw( const common_types::SPersistenceMetadataRaw & _type );
@@ -96,6 +97,7 @@ private:
     common_types::TPersistenceSetId createNewPersistenceId();
 
     // data
+    SInitSettings m_settings;
     mongoc_collection_t * m_tableWALClientOperations;
     mongoc_collection_t * m_tableWALProcessEvents;
     mongoc_collection_t * m_tableWALUserRegistrations;
@@ -103,9 +105,9 @@ private:
     mongoc_collection_t * m_tablePersistenceFromVideo;
     mongoc_collection_t * m_tablePersistenceFromDSS;
     mongoc_collection_t * m_tablePersistenceFromRaw;
-    std::vector<mongoc_collection_t *> m_allCollections;
-    std::unordered_map<common_types::TContextId, mongoc_collection_t *> m_contextCollections;
-    SInitSettings m_settings;
+    std::vector<mongoc_collection_t *> m_allTables;
+    std::unordered_map<common_types::TPersistenceSetId, mongoc_collection_t *> m_tablesByPersistenceId;
+    std::unordered_map<common_types::TPersistenceSetId, std::string> m_tableNameByPersistenceId;
 
     // service
     mongoc_client_t * m_mongoClient;

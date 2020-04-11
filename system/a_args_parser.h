@@ -49,6 +49,10 @@ public:
         return std::string();
     }
 
+    bool isKeyExist( T_Keys _key ){
+        return ( m_commmandLineArgs.find(_key) != m_commmandLineArgs.end() );
+    }
+
 
 protected:
     virtual bpo::options_description getArgumentsDescrTemplateMethodPart() = 0;
