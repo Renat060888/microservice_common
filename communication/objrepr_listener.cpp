@@ -4,7 +4,7 @@
 #include <objrepr/spatialObject.h>
 
 #include "system/logger.h"
-#include "common/common_types.h"
+#include "common/ms_common_types.h"
 #include "objrepr_listener.h"
 
 using namespace std;
@@ -19,7 +19,7 @@ static inline string serializeToString( const SNetworkPackage & _pack ){
 
     out.append( std::to_string( _pack.header.m_asyncRequestId ) );
     out.append( DELIMETER );
-    out.append( std::to_string( _pack.header.m_fromClient ) );
+    out.append( std::to_string( _pack.header.m_clientInitiative ) );
     out.append( DELIMETER );
     out.append( _pack.msg );
 
@@ -34,7 +34,7 @@ static inline SNetworkPackage deserializeFromString( const string & _str ){
     const string::size_type posSecondDollar = _str.find_last_of( DELIMETER );
 
     out.header.m_asyncRequestId = stoll( _str.substr( 0, posFirstDollar - 1 ) );
-    out.header.m_fromClient = stoi( _str.substr( posFirstDollar + 2, posSecondDollar - 1 ) );
+    out.header.m_clientInitiative = stoi( _str.substr( posFirstDollar + 2, posSecondDollar - 1 ) );
     out.msg = _str.substr( posSecondDollar + 2, _str.size() - posSecondDollar );
 
     return out;
@@ -158,7 +158,7 @@ PEnvironmentRequest ObjreprListener::getRequestInstance(){
 
     PObjreprListenerRequest request = std::make_shared<ObjreprListenerRequest>();
     request->listenedObject = m_settings.listenedObject;
-    request->m_header.m_fromClient = true;
+    request->m_header.m_clientInitiative = true;
     return request;
 }
 

@@ -4,6 +4,7 @@
 #endif
 
 #include "common/ms_common_utils.h"
+#include "common/ms_common_vars.h"
 #include "system/logger.h"
 
 #include "objrepr_bus.h"
@@ -22,7 +23,7 @@ ObjreprBus::~ObjreprBus()
     shutdown();
 }
 
-bool ObjreprBus::init(  ){
+bool ObjreprBus::init( const SInitSettings & _settings ){
 #ifdef OBJREPR_LIBRARY_EXIST
     if( m_systemInited ){
         return true;
@@ -30,13 +31,14 @@ bool ObjreprBus::init(  ){
 
     VS_LOG_INFO << "objrepr system-init begin" << endl;
 
-    if( ! launch(CONFIG_PARAMS.OBJREPR_CONFIG_PATH) ){
+    if( ! launch(_settings.objreprConfigPath) ){
         assert( false && "objrepr launch crashed :(" );
     }
 
-    if( ! CONFIG_PARAMS.OBJREPR_INITIAL_CONTEXT_NAME.empty() ){
+    if( ! _settings.initialContextName.empty() ){
 
-        if( ! openContext(ConfigReader::singleton().get().OBJREPR_INITIAL_CONTEXT_NAME) ){
+        const common_types::TContextId ctxId = getContextIdByName( _settings.initialContextName );
+        if( ! openContext(ctxId) ){
             assert( false && "objrepr opening context crashed :(" );
         }        
     }
@@ -48,15 +50,19 @@ bool ObjreprBus::init(  ){
 }
 
 void ObjreprBus::shutdown(){
+
+    shutdownDerive();
+
 #ifdef OBJREPR_LIBRARY_EXIST
     if( m_systemInited ){
         assert( objrepr::RepresentationServer::instance()->state() != objrepr::RepresentationServer::State::ST_Stopped );
 
-        if( ! m_videoServerMirrorName.empty() ){
-            objrepr::SpatialObjectPtr videoServer = getThisVideoServerObject( CONFIG_PARAMS.OBJREPR_GDM_VIDEO_CONTAINER_CLASSINFO_NAME,
-                                                                              CONFIG_PARAMS.SYSTEM_UNIQUE_ID );
-            setOnline( videoServer, false );
-        }
+        // TODO: move to derivative class
+//        if( ! m_videoServerMirrorName.empty() ){
+//            objrepr::SpatialObjectPtr videoServer = getThisVideoServerObject( CONFIG_PARAMS.OBJREPR_GDM_VIDEO_CONTAINER_CLASSINFO_NAME,
+//                                                                              CONFIG_PARAMS.SYSTEM_UNIQUE_ID );
+//            setOnline( videoServer, false );
+//        }
 
         m_systemInited = false;
     }
@@ -80,9 +86,9 @@ bool ObjreprBus::launch( const std::string & _configPath ){
     return true;
 }
 
-bool ObjreprBus::openContext( const std::string & _ctxName ){
+bool ObjreprBus::openContext( common_types::TContextId _ctxId ){
 #ifdef OBJREPR_LIBRARY_EXIST
-    const bool opened = objrepr::RepresentationServer::instance()->setCurrentContext( _ctxName.c_str() );
+    const bool opened = objrepr::RepresentationServer::instance()->setCurrentContext( _ctxId );
     if( ! opened ){
         m_lastError = objrepr::RepresentationServer::instance()->errString();
         VS_LOG_CRITICAL << "objrepr context open fail, reason: " << objrepr::RepresentationServer::instance()->errString() << endl;

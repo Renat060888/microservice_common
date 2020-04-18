@@ -10,7 +10,7 @@
 #include "system/logger.h"
 #include "system/a_config_reader.h"
 #include "common/ms_common_utils.h"
-#include "communication_gateway.h"
+#include "communication_gateway_facade.h"
 
 using namespace std;
 

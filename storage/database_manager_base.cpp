@@ -85,33 +85,35 @@ bool DatabaseManagerBase::init( SInitSettings _settings ){
 
     m_database = mongoc_client_get_database( m_mongoClient, _settings.databaseName.c_str() );
 
+    const string tableNamePrefix = "hometest_";
+
     m_tableWALClientOperations = mongoc_client_get_collection( m_mongoClient,
         _settings.databaseName.c_str(),
-        (string("video_server_") + mongo_fields::wal_client_operations::COLLECTION_NAME).c_str() );
+        (tableNamePrefix + mongo_fields::wal_client_operations::COLLECTION_NAME).c_str() );
 
     m_tableWALProcessEvents = mongoc_client_get_collection( m_mongoClient,
         _settings.databaseName.c_str(),
-        (string("video_server_") + mongo_fields::wal_process_events::COLLECTION_NAME).c_str() );
+        (tableNamePrefix + mongo_fields::wal_process_events::COLLECTION_NAME).c_str() );
 
     m_tableWALUserRegistrations = mongoc_client_get_collection( m_mongoClient,
         _settings.databaseName.c_str(),
-        (string("video_server_") + mongo_fields::wal_user_registrations::COLLECTION_NAME).c_str() );
+        (tableNamePrefix + mongo_fields::wal_user_registrations::COLLECTION_NAME).c_str() );
 
     m_tablePersistenceDescr = mongoc_client_get_collection( m_mongoClient,
         _settings.databaseName.c_str(),
-        (string("video_server_") + mongo_fields::persistence_set_metadata::COLLECTION_NAME).c_str() );
+        (tableNamePrefix + mongo_fields::persistence_set_metadata::COLLECTION_NAME).c_str() );
 
     m_tablePersistenceFromVideo = mongoc_client_get_collection( m_mongoClient,
         _settings.databaseName.c_str(),
-        (string("video_server_") + mongo_fields::persistence_set_metadata_video::COLLECTION_NAME).c_str() );
+        (tableNamePrefix + mongo_fields::persistence_set_metadata_video::COLLECTION_NAME).c_str() );
 
     m_tablePersistenceFromRaw = mongoc_client_get_collection( m_mongoClient,
         _settings.databaseName.c_str(),
-        (string("video_server_") + mongo_fields::persistence_set_metadata_raw::COLLECTION_NAME).c_str() );
+        (tableNamePrefix + mongo_fields::persistence_set_metadata_raw::COLLECTION_NAME).c_str() );
 
     m_tablePersistenceFromDSS = mongoc_client_get_collection( m_mongoClient,
         _settings.databaseName.c_str(),
-        (string("video_server_") + mongo_fields::persistence_set_metadata_dss::COLLECTION_NAME).c_str() );
+        (tableNamePrefix + mongo_fields::persistence_set_metadata_dss::COLLECTION_NAME).c_str() );
 
     m_allTables.push_back( m_tableWALClientOperations );
     m_allTables.push_back( m_tableWALProcessEvents );
@@ -471,21 +473,39 @@ void DatabaseManagerBase::writePersistenceFromRaw( const common_types::SPersiste
 // persistence read
 std::vector<SPersistenceMetadata> DatabaseManagerBase::getPersistenceSetMetadata( common_types::TContextId _ctxId ){
 
+//    bson_t * query = nullptr;
+//    bson_t * sortOrder = nullptr;
+//    if( _ctxId == common_vars::ALL_CONTEXT_ID ){
+//        query = BCON_NEW( nullptr );
+//        sortOrder = BCON_NEW( "sort", "{", mongo_fields::persistence_set_metadata::CTX_ID.c_str(), BCON_INT32 (-1), "}" );
+//    }
+//    else{
+//        query = BCON_NEW( mongo_fields::persistence_set_metadata::CTX_ID.c_str(), BCON_INT32( _ctxId ));
+//        sortOrder = BCON_NEW( nullptr );
+//    }
+
+//    mongoc_cursor_t * cursor = mongoc_collection_find_with_opts( m_tablePersistenceDescr,
+//                                                                 query,
+//                                                                 sortOrder,
+//                                                                 nullptr );
+
     bson_t * query = nullptr;
-    bson_t * sortOrder = nullptr;
     if( _ctxId == common_vars::ALL_CONTEXT_ID ){
-        query = BCON_NEW( nullptr );
-        sortOrder = BCON_NEW( "sort", "{", mongo_fields::persistence_set_metadata::CTX_ID.c_str(), BCON_INT32 (-1), "}" );
+        query = BCON_NEW( "$query", "{", "}",
+                          "$orderby", "{", mongo_fields::persistence_set_metadata::CTX_ID.c_str(), BCON_INT32 (-1), "}" );
     }
     else{
-        query = BCON_NEW( mongo_fields::persistence_set_metadata::CTX_ID.c_str(), BCON_INT32( _ctxId ));
-        sortOrder = BCON_NEW( nullptr );
+        query = BCON_NEW( "$query", "{", mongo_fields::persistence_set_metadata::CTX_ID.c_str(), BCON_INT32( _ctxId ), "}" );
     }
 
-    mongoc_cursor_t * cursor = mongoc_collection_find_with_opts( m_tablePersistenceDescr,
-                                                                 query,
-                                                                 sortOrder,
-                                                                 nullptr );
+    mongoc_cursor_t * cursor = mongoc_collection_find( m_tablePersistenceDescr,
+            MONGOC_QUERY_NONE,
+            0,
+            0,
+            0,
+            query,
+            nullptr,
+            nullptr );
 
     std::vector<common_types::SPersistenceMetadata> out;
     TContextId currentCtxId = 0;
@@ -567,12 +587,23 @@ std::vector<SPersistenceMetadata> DatabaseManagerBase::getPersistenceSetMetadata
 common_types::SPersistenceMetadata DatabaseManagerBase::getPersistenceSetMetadata( common_types::TPersistenceSetId _persId ){
 
     // make query
-    bson_t * query = BCON_NEW( mongo_fields::persistence_set_metadata::PERSISTENCE_ID.c_str(), BCON_INT32( _persId ));
+//    bson_t * query = BCON_NEW( mongo_fields::persistence_set_metadata::PERSISTENCE_ID.c_str(), BCON_INT32( _persId ));
 
-    mongoc_cursor_t * cursor = mongoc_collection_find_with_opts( m_tablePersistenceDescr,
-                                                                 query,
-                                                                 nullptr,
-                                                                 nullptr );
+//    mongoc_cursor_t * cursor = mongoc_collection_find_with_opts( m_tablePersistenceDescr,
+//                                                                 query,
+//                                                                 nullptr,
+//                                                                 nullptr );
+    bson_t * query = BCON_NEW( "$query", "{", mongo_fields::persistence_set_metadata::PERSISTENCE_ID.c_str(), BCON_INT32( _persId ), "}" );
+
+    mongoc_cursor_t * cursor = mongoc_collection_find( m_tablePersistenceDescr,
+            MONGOC_QUERY_NONE,
+            0,
+            0,
+            0,
+            query,
+            nullptr,
+            nullptr );
+
     // check
     if( ! mongoc_cursor_more( cursor ) ){
         return common_types::SPersistenceMetadata();

@@ -13,7 +13,7 @@
 #include "network_interface.h"
 #include "common/ms_common_types.h"
 
-class CommunicationGatewayFacade :  public INetworkObserver, public common_types::ICommunicationService
+class CommunicationGatewayFacade :  public INetworkObserver, public ICommunicationService
 {
 public:    
     // available transport mechanisms

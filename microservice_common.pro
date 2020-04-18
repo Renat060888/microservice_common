@@ -17,8 +17,9 @@ QMAKE_CXXFLAGS += -Wno-unused-variable
 
 # TODO: add defines to logger, system monitor, restbed webserver, database, etc...
 DEFINES += \
-    SWITCH_LOGGER_SIMPLE \
-#    OBJREPR_LIBRARY_EXIST \
+    SWITCH_LOGGER_ASTRA \
+#    SWITCH_LOGGER_SIMPLE \
+    OBJREPR_LIBRARY_EXIST \
 
 INCLUDEPATH += \
     /usr/include/libgtop-2.0 \
@@ -52,7 +53,7 @@ SOURCES += \
         common/ms_common_types.cpp \
         communication/amqp_client_c.cpp \
         communication/amqp_controller.cpp \
-        communication/communication_gateway.cpp \
+        communication/communication_gateway_facade.cpp \
         communication/http_client.cpp \
         communication/i_command.cpp \
         communication/i_command_external.cpp \
@@ -95,7 +96,7 @@ HEADERS += \
     common/ms_common_vars.h \
     communication/amqp_client_c.h \
     communication/amqp_controller.h \
-    communication/communication_gateway.h \
+    communication/communication_gateway_facade.h \
     communication/http_client.h \
     communication/i_command.h \
     communication/i_command_external.h \

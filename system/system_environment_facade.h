@@ -1,9 +1,9 @@
-#ifndef SYSTEM_ENVIRONMENT_H
-#define SYSTEM_ENVIRONMENT_H
+#ifndef SYSTEM_ENVIRONMENT_FACADE_H
+#define SYSTEM_ENVIRONMENT_FACADE_H
 
 #include <unordered_map>
 
-#include "system/wal.h"
+#include "wal.h"
 #include "storage/database_manager_base.h"
 #include "common/ms_common_types.h"
 
@@ -13,16 +13,19 @@ public:
     struct SServiceLocator {
         SServiceLocator()
         {}        
-
+        common_types::IContextService * contextControlService;
     };
 
     struct SInitSettings {
         SInitSettings()
         {}
 
+        // database
         std::string databaseHost;
         std::string databaseName;
+        // wal
         bool restoreSystemAfterInterrupt;
+        // file stuff
         std::string uniqueLockFileFullPath;
 
         SServiceLocator services;
@@ -36,13 +39,15 @@ public:
     SystemEnvironmentFacade();
     ~SystemEnvironmentFacade();
 
-    bool init( SInitSettings _settings );
+    bool init( const SInitSettings & _settings );
     const SState & getState(){ return m_state; }
 
-    bool openContext( common_types::TContextId _ctxId );
-    bool closeContext();
-
     WriteAheadLogger * serviceForWriteAheadLogging();
+    common_types::IContextService * serviceForContextControl();
+
+    // NOTE: custom services will be in derived classes
+
+
     // TODO: move here system monitor & path locator ?
 
 
@@ -73,11 +78,7 @@ private:
     // service
     WriteAheadLogger m_wal;
     DatabaseManagerBase * m_database;
-
-
-
-
 };
 
-#endif // SYSTEM_ENVIRONMENT_H
+#endif // SYSTEM_ENVIRONMENT_FACADE_H
 
