@@ -56,6 +56,9 @@ public:
 
 
 private:
+    ClassFactory(){}
+    ~ClassFactory(){}
+
     ClassFactory( const ClassFactory & _rhs ) = delete;
     ClassFactory & operator=( const ClassFactory & _rhs ) = delete;
 

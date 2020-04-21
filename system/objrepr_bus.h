@@ -8,42 +8,59 @@
 
 #include "common/ms_common_types.h"
 
-class ObjreprBus
+class ObjreprBus : public common_types::IContextService
 {
     static bool m_systemInited;
 public:
+    struct SInitSettings {
+        std::string objreprConfigPath;
+        std::string initialContextName;
+    };
+
+    // TODO: do instead 'getLastError()'
+    struct SState {
+        SInitSettings settings;
+        std::string lastError;
+    };
+
     static ObjreprBus & singleton(){
         static ObjreprBus instance;
         return instance;
     }
 
-    bool init();
+    bool init( const SInitSettings & _settings );
     void shutdown();
     const std::string & getLastError(){ return m_lastError; }
 
-    bool openContextAsync( common_types::TContextId _ctxId );
-    bool closeContext();
+    virtual bool openContext( common_types::TContextId _ctxId ) override;
+    virtual bool openContextAsync( common_types::TContextId _ctxId ) override;
+    virtual bool closeContext() override;
 
-    common_types::TContextId getCurrentContextId();
-    common_types::TContextId getContextIdByName( const std::string & _ctxName );
-    std::string getContextNameById( common_types::TContextId _ctxId );
+    virtual common_types::TContextId getCurrentContextId() override;
+    virtual common_types::TContextId getContextIdByName( const std::string & _ctxName ) override;
+    virtual std::string getContextNameById( common_types::TContextId _ctxId ) override;
+
+
+protected:
+    ObjreprBus();
+    virtual ~ObjreprBus();
+
+    virtual void shutdownDerive(){}
+
+    // NOTE: stuff for derived classes ( video-server-object, player-object, etc... )
 
 
 private:
-    ObjreprBus();
-    ~ObjreprBus();
-
     ObjreprBus( const ObjreprBus & _inst ) = delete;
     ObjreprBus & operator=( const ObjreprBus & _inst ) = delete;
 
     void threadObjreprContextLoading( common_types::TContextId _ctxId );
 
     bool launch( const std::string & _configPath );    
-    bool openContext( const std::string & _ctxName );
 
 
 
-    // data
+    // data    
     std::string m_lastError;
 
     // service
@@ -52,6 +69,5 @@ private:
 
 
 };
-#define OBJREPR_BUS ObjreprBus::singleton()
 
 #endif // OBJREPR_BUS_H

@@ -2,10 +2,8 @@
 #define MS_COMMON_TYPES_H
 
 #include <memory>
+#include <vector>
 #include <string>
-
-#include "communication/network_interface.h"
-
 
 namespace common_types {
 
@@ -206,6 +204,7 @@ struct SUserState {
     TPid userPid;
     int64_t lastPingMillisec;
 };
+using PUserState = std::shared_ptr<SUserState>;
 
 struct FunctorObjectStep {
     FunctorObjectStep( TLogicStep _stepToFind )
@@ -334,12 +333,17 @@ public:
 // ---------------------------------------------------------------------------
 // service interfaces
 // ---------------------------------------------------------------------------
-class ICommunicationService {
+class IContextService {
 public:
-    virtual ~ICommunicationService(){}
+    virtual ~IContextService(){}
 
-    virtual PNetworkEntity getConnection( INetworkEntity::TConnectionId _connId ) = 0;
-    virtual PNetworkClient getFileDownloader() = 0;
+    virtual bool openContext( TContextId _ctxId ) = 0;
+    virtual bool openContextAsync( TContextId _ctxId ) = 0;
+    virtual bool closeContext() = 0;
+
+    virtual common_types::TContextId getCurrentContextId() = 0;
+    virtual common_types::TContextId getContextIdByName( const std::string & _ctxName ) = 0;
+    virtual std::string getContextNameById( common_types::TContextId _ctxId ) = 0;
 };
 
 class IWALPersistenceService {

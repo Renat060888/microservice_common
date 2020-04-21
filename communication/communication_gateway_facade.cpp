@@ -10,7 +10,7 @@
 #include "system/logger.h"
 #include "system/a_config_reader.h"
 #include "common/ms_common_utils.h"
-#include "communication_gateway.h"
+#include "communication_gateway_facade.h"
 
 using namespace std;
 
@@ -121,9 +121,12 @@ bool CommunicationGatewayFacade::initialConnections( const SInitSettings & _sett
     // shell ( domain socket )
     Shell::SInitSettings settings1;
     settings1.shellMode = ( _settings.paramsForInitialShell.client ? Shell::EShellMode::CLIENT : Shell::EShellMode::SERVER );
-    settings1.asyncServerMode = false;
+    settings1.asyncServerMode = _settings.paramsForInitialShell.asyncServerMode;
+    settings1.asyncClientModeRequests = _settings.paramsForInitialShell.asyncClientModeRequests;
     settings1.socketFileName = _settings.paramsForInitialShell.socketName;
-    settings1.messageMode = Shell::EMessageMode::WITHOUT_SIZE;
+    settings1.messageMode = ( _settings.paramsForInitialShell.withSizeHeader
+                              ? Shell::EMessageMode::WITH_SIZE
+                              : Shell::EMessageMode::WITHOUT_SIZE );
 
     PShell shell = std::make_shared<Shell>( getConnectionId() );
     if( ! shell->init(settings1) ){
@@ -245,9 +248,12 @@ PNetworkClient CommunicationGatewayFacade::getNewShellConnection( const SConnect
     // shell ( domain socket )
     Shell::SInitSettings settings1;
     settings1.shellMode = ( _params.client ? Shell::EShellMode::CLIENT : Shell::EShellMode::SERVER );
-    settings1.asyncServerMode = false;
+    settings1.asyncServerMode = _params.asyncServerMode;
+    settings1.asyncClientModeRequests = _params.asyncClientModeRequests;
     settings1.socketFileName = _params.socketName;
-    settings1.messageMode = Shell::EMessageMode::WITHOUT_SIZE;
+    settings1.messageMode = ( _params.withSizeHeader
+                              ? Shell::EMessageMode::WITH_SIZE
+                              : Shell::EMessageMode::WITHOUT_SIZE );
 
     PShell shell = std::make_shared<Shell>( getConnectionId() );
     if( ! shell->init(settings1) ){

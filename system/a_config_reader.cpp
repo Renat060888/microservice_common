@@ -157,7 +157,7 @@ bool AConfigReader::parseBase( const string & _content ){
 
     boost::property_tree::ptree objrepr = config.get_child("objrepr");
     m_parameters.OBJREPR_CONFIG_PATH = setParameterNew<std::string>( objrepr, "config_path", string("objrepr_cfg.xml") );
-    m_parameters.OBJREPR_INITIAL_CONTEXT_NAME = setParameterNew<std::string>( objrepr, "initial_context_name", string("0") );
+    m_parameters.OBJREPR_INITIAL_CONTEXT_NAME = setParameterNew<std::string>( objrepr, "initial_context_name", string("") );
     m_parameters.OBJREPR_GDM_VIDEO_CONTAINER_CLASSINFO_NAME = setParameterNew<std::string>( objrepr, "gdm_video_container_name", string("Система анализа видео") );
 
 

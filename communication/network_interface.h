@@ -193,6 +193,18 @@ public:
 };
 using PNetworkClient = std::shared_ptr<INetworkClient>;
 
+
+// ------------------------------------
+// network services
+// ------------------------------------
+class ICommunicationService {
+public:
+    virtual ~ICommunicationService(){}
+
+    virtual PNetworkEntity getConnection( INetworkEntity::TConnectionId _connId ) = 0;
+    virtual PNetworkClient getFileDownloader() = 0;
+};
+
 #endif // NETWORK_INTERFACE_H
 
 

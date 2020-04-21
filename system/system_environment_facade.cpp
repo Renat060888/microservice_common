@@ -5,7 +5,6 @@
 #include "common/ms_common_utils.h"
 #include "logger.h"
 #include "process_launcher.h"
-#include "objrepr_bus.h"
 #include "system_environment_facade.h"
 
 using namespace std;
@@ -25,12 +24,10 @@ SystemEnvironmentFacade::~SystemEnvironmentFacade()
 
     DatabaseManagerBase::destroyInstance( m_database );
 
-    OBJREPR_BUS.shutdown();
-
     VS_LOG_INFO << PRINT_HEADER << " shutdown success" << endl;
 }
 
-bool SystemEnvironmentFacade::init( SInitSettings _settings ){
+bool SystemEnvironmentFacade::init( const SInitSettings & _settings ){
 
     m_state.settings = _settings;
 
@@ -39,27 +36,20 @@ bool SystemEnvironmentFacade::init( SInitSettings _settings ){
     }
 
     // TODO: what for ?
-    ::umask( 0 );
+    ::umask( 0 );  
 
-    if( ! OBJREPR_BUS.init() ){
-        VS_LOG_CRITICAL << "objrepr init failed: " << OBJREPR_BUS.getLastError() << endl;
-        return false;
-    }    
-
-    DatabaseManagerBase::SInitSettings settings3;
-    settings3.host = _settings.databaseHost;
-    settings3.databaseName = _settings.databaseName;
-
+    DatabaseManagerBase::SInitSettings dbSettings;
+    dbSettings.host = _settings.databaseHost;
+    dbSettings.databaseName = _settings.databaseName;
     m_database = DatabaseManagerBase::getInstance();
-    if( ! m_database->init(settings3) ){
+    if( ! m_database->init(dbSettings) ){
         return false;
     }
 
-    WriteAheadLogger::SInitSettings settings2;
-    settings2.active = _settings.restoreSystemAfterInterrupt;
-    settings2.persistService = this;
-
-    if( ! m_wal.init(settings2) ){
+    WriteAheadLogger::SInitSettings walSettings;
+    walSettings.active = _settings.restoreSystemAfterInterrupt;
+    walSettings.persistService = this;
+    if( ! m_wal.init(walSettings) ){
         return false;
     }
 
@@ -83,8 +73,11 @@ bool SystemEnvironmentFacade::init( SInitSettings _settings ){
 }
 
 WriteAheadLogger * SystemEnvironmentFacade::serviceForWriteAheadLogging(){
-
     return & m_wal;
+}
+
+common_types::IContextService * SystemEnvironmentFacade::serviceForContextControl(){
+    return m_state.settings.services.contextControlService;
 }
 
 bool SystemEnvironmentFacade::isApplicationInstanceUnique( const std::string & _lockFileFullPath ){
@@ -118,27 +111,6 @@ void SystemEnvironmentFacade::writePidFile( const std::string & _pidFileFullPath
     }
 
     pidFile << pidStr;
-}
-
-bool SystemEnvironmentFacade::openContext( common_types::TContextId _ctxId ){
-
-    if( ! OBJREPR_BUS.openContextAsync(_ctxId) ){
-        m_state.lastError = OBJREPR_BUS.getLastError();
-        return false;
-    }
-    return true;
-
-
-}
-
-bool SystemEnvironmentFacade::closeContext(){
-
-    if( ! OBJREPR_BUS.closeContext() ){
-        m_state.lastError = OBJREPR_BUS.getLastError();
-        return false;
-    }
-    return true;
-
 }
 
 bool SystemEnvironmentFacade::write( const common_types::SWALClientOperation & _clientOperation ){

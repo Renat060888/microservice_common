@@ -2,6 +2,7 @@
 #define WAL_H
 
 #include "common/ms_common_types.h"
+#include "communication/network_interface.h"
 
 // component for 1. system reliability and 2. play the role of a journal
 class WriteAheadLogger
