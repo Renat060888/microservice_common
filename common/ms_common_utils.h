@@ -18,6 +18,7 @@
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/uuid/uuid_generators.hpp>
+#include <boost/filesystem.hpp>
 
 #include "ms_common_types.h"
 
@@ -296,6 +297,24 @@ inline std::string wstrToStr(const std::wstring & _wstr){
 
 inline std::wstring strToWstr(const std::string _str){
     return std::wstring( _str.begin(), _str.end() );
+}
+
+// --------------------------------------------------------------
+// filesystem
+// --------------------------------------------------------------
+inline bool isDirectory( const std::string & _fsEntity ){
+    namespace fs = boost::filesystem;
+
+    try{
+        fs::path path( _fsEntity );
+        if( fs::exists(path) && fs::is_directory(path) ){
+            return true;
+        }
+    }
+    catch( fs::filesystem_error & _ex ){
+        PRELOG_ERR << _ex.what() << std::endl;
+    }
+    return false;
 }
 
 // --------------------------------------------------------------

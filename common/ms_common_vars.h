@@ -27,6 +27,7 @@ static const std::string MISSION_NAME = "mission_name";
 
 namespace mongo_fields {
 
+
 namespace analytic {
 
     const std::string COLLECTION_NAME = "analytic_events";
