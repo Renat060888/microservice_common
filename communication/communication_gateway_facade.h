@@ -83,6 +83,14 @@ public:
         std::string memoryAreaName;
     };
 
+    struct SConnectParamsObjrepr {
+        SConnectParamsObjrepr()
+            : enable(false)
+        {}
+        bool enable;
+        common_types::TObjectId serverMirrorIdInContext;
+    };
+
     // specialization
     struct SSpecParameters {
         SSpecParameters()
@@ -110,6 +118,7 @@ public:
         SConnectParamsHTTPServer paramsForInitialHTTPServer;
         SConnectParamsWebsocketServer paramsForInitialWebsocketServer;
         SConnectParamsSharedMem paramsForInitialSharedMem;
+        SConnectParamsObjrepr paramsForInitialObjrepr;
 
         SSpecParameters specParams;
     };
@@ -147,6 +156,7 @@ protected:
     PNetworkProvider getInitialHTTPServerConnection();
     PNetworkProvider getInitialWebsocketServerConnection();
     PNetworkClient getInitialSharedMemConnection();
+    PNetworkClient getInitialObjreprConnection();
 
     INetworkEntity::TConnectionId getConnectionId();
 

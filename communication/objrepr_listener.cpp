@@ -1,80 +1,69 @@
 
-#ifdef OBJREPR_LIBRARY_EXIST
+#include <objrepr/reprServer.h>
 
-#include <objrepr/spatialObject.h>
-
-#include "system/logger.h"
-#include "common/ms_common_types.h"
 #include "objrepr_listener.h"
+#include "system/logger.h"
 
 using namespace std;
+using namespace common_types;
 
-static constexpr const char * MESSAGE_CONTENT_TYPE = "text/json";
+// NOTE: watch for buffer overflow
+static constexpr int OUTCOMING_BUFFER_SIZE = 4096;
+static constexpr const char * PRINT_HEADER = "ObjreprServiceBus:";
+static constexpr const char * MESSAGE_CONTENT_TYPE_SERVER = "json/server";
+static constexpr const char * MESSAGE_CONTENT_TYPE_CLIENT = "json/client";
 static constexpr const char * DELIMETER = "$$";
-
-static inline string serializeToString( const SNetworkPackage & _pack ){
-
-    string out;
-    out.reserve( _pack.msg.size() );
-
-    out.append( std::to_string( _pack.header.m_asyncRequestId ) );
-    out.append( DELIMETER );
-    out.append( std::to_string( _pack.header.m_clientInitiative ) );
-    out.append( DELIMETER );
-    out.append( _pack.msg );
-
-    return out;
-}
-
-static inline SNetworkPackage deserializeFromString( const string & _str ){
-
-    SNetworkPackage out;
-
-    const string::size_type posFirstDollar = _str.find_first_of( DELIMETER );
-    const string::size_type posSecondDollar = _str.find_last_of( DELIMETER );
-
-    out.header.m_asyncRequestId = stoll( _str.substr( 0, posFirstDollar - 1 ) );
-    out.header.m_clientInitiative = stoi( _str.substr( posFirstDollar + 2, posSecondDollar - 1 ) );
-    out.msg = _str.substr( posSecondDollar + 2, _str.size() - posSecondDollar );
-
-    return out;
-}
 
 // ------------------------------------------------------------------
 // request override
 // ------------------------------------------------------------------
 class ObjreprListenerRequest : public AEnvironmentRequest {
-
 public:
-    ObjreprListenerRequest()
+    ObjreprListenerRequest()    
     {}
 
     virtual void setOutcomingMessage( const std::string & _msg ) override {
 
-        // TODO: packaged transfer
-//        SNetworkPackage package;
-//        package.header = m_header;
-//        package.msg = _msg;
-//        const string toSend = serializeToString( package );
+//        VS_LOG_INFO << "msg to client [" << _msg << "]" << endl;
+        if( objreprListener->m_settings.serverMode ){
 
-        const string toSend = _msg;
-#ifdef OBJREPR_LIBRARY_EXIST
-        bool rt = listenedObject->sendServiceMessage( toSend, MESSAGE_CONTENT_TYPE );
-#endif
+        }
+        else{
+//            if( objreprListener->m_settings.withPackageHeader ){
+//                SNetworkPackage package;
+//                package.header.m_clientInitiative = AEnvironmentRequest::m_clientInitiative;
+//                package.msg = _msg;
+//                AEnvironmentRequest::m_incomingMessage = objreprListener->sendBlockedRequest( package );
+//            }
+//            else{
+//                AEnvironmentRequest::m_incomingMessage = objreprListener->sendBlockedRequest( _msg );
+//            }
+//            return true;
+        }
 
-        // TODO: check rt
+        // TODO: this is a server mode
+        if( objreprListener->m_settings.withPackageHeader ){
+            SNetworkPackage package;
+            package.header = m_header;
+            package.msg = _msg;
+            objreprListener->sendAsyncRequest( package );
+        }
+        else{
+            const bool rt = objreprListener->m_listenedObject->sendServiceMessage( _msg, MESSAGE_CONTENT_TYPE_SERVER );
+            if( ! rt ){
+                VS_LOG_ERROR << PRINT_HEADER << " couldn't send service msg [" << _msg << "]" << endl;
+                return;
+            }
+        }
     }
 
     virtual void * getUserData() override {
         return (void *)( & m_sensorId );
     }
 
-    common_types::TSensorId m_sensorId;
+    TSensorId m_sensorId;
     SNetworkPackage::SHeader m_header;
-#ifdef OBJREPR_LIBRARY_EXIST
-    objrepr::SpatialObjectPtr listenedObject;
-#endif
-
+    ObjreprListener * objreprListener;
 };
 using PObjreprListenerRequest = std::shared_ptr<ObjreprListenerRequest>;
 
@@ -85,7 +74,8 @@ ObjreprListener::ObjreprListener( INetworkEntity::TConnectionId _id )
     : INetworkProvider(_id)
     , INetworkClient(_id)
 {
-
+    m_outcomingBuffer = new char[ OUTCOMING_BUFFER_SIZE ];
+    m_outcomingBufferSize = OUTCOMING_BUFFER_SIZE;
 }
 
 ObjreprListener::~ObjreprListener()
@@ -95,54 +85,180 @@ ObjreprListener::~ObjreprListener()
 
 bool ObjreprListener::init( SInitSettings _settings ){
 
-    assert( _settings.listenedObject );
-
     m_settings = _settings;
 
-    const bool rt = m_settings.listenedObject->subscribeOnServiceMessages();
-    if( ! rt ){
-        VS_LOG_ERROR << "ObjreprListener cannot subscribe on object [" << m_settings.listenedObject->name() << "]" << endl;
+    //
+    objrepr::SpatialObjectManager * objManager = objrepr::RepresentationServer::instance()->objectManager();
+    objrepr::SpatialObjectPtr sensor = objManager->getObject( _settings.listenedObjectId );
+    if( ! sensor ){
+        VS_LOG_ERROR << PRINT_HEADER << " object for listen with id [" << _settings.listenedObjectId << "] not found" << endl;
         return false;
     }
 
-    m_settings.listenedObject->serviceMessageReceived.connect( boost::bind( & ObjreprListener::callbackFromObjrepr, this, _1 ) );
+    m_listenedObject = sensor;
 
-    VS_LOG_INFO << "ObjreprListener subscribed on object [" << m_settings.listenedObject->name() << "]" << endl;
+    //
+    const bool rt = m_listenedObject->subscribeOnServiceMessages();
+    if( ! rt ){
+        VS_LOG_ERROR << PRINT_HEADER << " cannot subscribe on object [" << m_listenedObject->name() << "]" << endl;
+        return false;
+    }
+
+    //
+    if( _settings.serverMode ){
+        m_listenedObject->serviceMessageReceived.connect( boost::bind( & ObjreprListener::callbackFromObjreprServerMode, this, _1 ) );
+    }
+    else{
+        m_listenedObject->serviceMessageReceived.connect( boost::bind( & ObjreprListener::callbackFromObjreprClientMode, this, _1 ) );
+    }
+
+    VS_LOG_INFO << PRINT_HEADER << " subscribed on object [" << m_listenedObject->name() << "]" << endl;
 
     return true;
 }
 
-void ObjreprListener::callbackFromObjrepr( uint32_t _messageId ){
+void ObjreprListener::callbackFromObjreprServerMode( uint32_t _messageId ){
 
     std::string message;
     std::string contentType;
     constexpr uint32_t timeout = 0;
-    m_settings.listenedObject->recvServiceMessage( & message, & contentType, _messageId, timeout );
+    const bool rt = m_listenedObject->recvServiceMessage( & message, & contentType, _messageId, timeout );
+    if( ! rt ){
+        VS_LOG_WARN << PRINT_HEADER << " receive message failed" << endl;
+    }
 
-    if( contentType != MESSAGE_CONTENT_TYPE ){
-        VS_LOG_WARN << "content type mismatch from message id [" << _messageId << "]"
-                 << " with [" << message << "]"
-                 << endl;
+    if( contentType != MESSAGE_CONTENT_TYPE_CLIENT ){
+//        VS_LOG_WARN << PRINT_HEADER
+//                    << " content type mismatch from message id [" << _messageId << "]"
+//                    << " incoming type [" << contentType << "] with [" << MESSAGE_CONTENT_TYPE_CLIENT << "]"
+//                    << " msg [" << message << "]"
+//                    << endl;
         return;
     }
 
-    // TODO: packaged transfer
-//    const SNetworkPackage pack = deserializeFromString( message );
-//    request->m_incomingMessage = pack.msg;
-
-    PObjreprListenerRequest request = std::make_shared<ObjreprListenerRequest>();
-    request->m_incomingMessage = message;
-    request->m_sensorId = m_settings.listenedObject->id();
-    request->m_connectionId = INetworkEntity::getConnId();
-
-    for( INetworkObserver * observer : m_observers ){
-        observer->callbackNetworkRequest( request );
+    if( message.empty() ){
+        return;
     }
 
+    // request from client with header
+    if( m_settings.withPackageHeader ){
+        SNetworkPackage * package = (SNetworkPackage *)message.data();
+
+        PObjreprListenerRequest request = std::make_shared<ObjreprListenerRequest>();
+        request->m_incomingMessage.assign( ((char *)message.data()) + sizeof(SNetworkPackage::SHeader), message.size() - 1 );
+        request->m_sensorId = m_listenedObject->id();
+        request->m_connectionId = INetworkEntity::getConnId();
+        request->m_header = package->header;
+        request->objreprListener = this;
+
+        for( INetworkObserver * observer : m_observers ){
+            observer->callbackNetworkRequest( request );
+        }        
+    }
+    // request from client w/o header
+    else{
+        PObjreprListenerRequest request = std::make_shared<ObjreprListenerRequest>();
+        request->m_incomingMessage = message;
+        request->m_sensorId = m_listenedObject->id();
+        request->m_connectionId = INetworkEntity::getConnId();
+        request->objreprListener = this;
+
+        for( INetworkObserver * observer : m_observers ){
+            observer->callbackNetworkRequest( request );
+        }
+    }
+}
+
+void ObjreprListener::callbackFromObjreprClientMode( uint32_t _messageId ){
+
+    std::string message;
+    std::string contentType;
+    constexpr uint32_t timeout = 0;
+    const bool rt = m_listenedObject->recvServiceMessage( & message, & contentType, _messageId, timeout );
+    if( ! rt ){
+        VS_LOG_WARN << PRINT_HEADER << " receive message failed" << endl;
+    }
+
+    if( contentType != MESSAGE_CONTENT_TYPE_SERVER ){
+        VS_LOG_WARN << PRINT_HEADER
+                    << " content type mismatch from message id [" << _messageId << "]"
+                    << " incoming type [" << contentType << "] with [" << MESSAGE_CONTENT_TYPE_SERVER << "]"
+                    << " msg [" << message << "]"
+                    << endl;
+        return;
+    }
+
+    if( message.empty() ){
+        return;
+    }
+
+    if( m_settings.withPackageHeader ){
+        SNetworkPackage * package = (SNetworkPackage *)message.data();
+
+        // server initiative
+        if( ! package->header.m_clientInitiative ){
+            PObjreprListenerRequest request = std::make_shared<ObjreprListenerRequest>();
+            request->m_sensorId = m_listenedObject->id();
+            request->m_connectionId = INetworkEntity::getConnId();
+            request->m_incomingMessage.assign( ((char *)message.data()) + sizeof(SNetworkPackage::SHeader), message.size() - 1 );
+            request->m_header = package->header;
+            request->objreprListener = this;
+
+            for( INetworkObserver * observer : m_observers ){
+                observer->callbackNetworkRequest( request );
+            }
+
+            VS_LOG_INFO << PRINT_HEADER
+                        << " message from server (initiator) [" << request->m_incomingMessage << "]"
+                        << endl;
+        }
+        // response from server
+        else{
+            m_incomingMessageData.assign( ((char *)message.data()) + sizeof(SNetworkPackage::SHeader), message.size() - 1 );
+            m_responseCatched.store( true );
+            m_cvResponseCame.notify_one();
+
+            if( m_incomingMessageData.find("pong") == string::npos ){
+                VS_LOG_INFO << PRINT_HEADER
+                            << " message from server (response) [" << m_incomingMessageData << "]"
+                            << endl;
+            }
+        }
+    }
+    else{
+        // TODO: server's initiative ( w/o header )
+
+
+        // NOTE: this is a response
+        m_incomingMessageData = message;
+        m_responseCatched.store( true );
+        m_cvResponseCame.notify_one();
+
+        if( m_incomingMessageData.find("pong") == string::npos ){
+            VS_LOG_INFO << PRINT_HEADER
+                        << " message from server (response) [" << m_incomingMessageData << "]"
+                        << endl;
+        }
+    }
 }
 
 void ObjreprListener::addObserver( INetworkObserver * _observer ){
     m_observers.push_back( _observer );
+}
+
+void ObjreprListener::removeObserver( INetworkObserver * _observer ){
+
+    for( auto iter = m_observers.begin(); iter != m_observers.end(); ){
+        INetworkObserver * observer = ( * iter );
+
+        if( observer == _observer ){
+            iter = m_observers.erase( iter );
+            return;
+        }
+        else{
+            ++iter;
+        }
+    }
 }
 
 void ObjreprListener::runNetworkCallbacks(){
@@ -157,19 +273,93 @@ void ObjreprListener::setPollTimeout( int32_t _timeoutMillsec ){
 PEnvironmentRequest ObjreprListener::getRequestInstance(){
 
     PObjreprListenerRequest request = std::make_shared<ObjreprListenerRequest>();
-    request->listenedObject = m_settings.listenedObject;
-    request->m_header.m_clientInitiative = true;
+    request->objreprListener = this;
+    request->m_sensorId = m_listenedObject->id();
     return request;
 }
 
 void ObjreprListener::shutdown(){
 
-    const bool rt = m_settings.listenedObject->unsubscribeFromServiceMessages();
+    const bool rt = m_listenedObject->unsubscribeFromServiceMessages();
 
-    m_settings.listenedObject->serviceMessageReceived.disconnect_all_slots();
+    m_listenedObject->serviceMessageReceived.disconnect_all_slots();
+
+    delete[] m_outcomingBuffer;
 }
 
+std::string ObjreprListener::sendBlockedRequest( const SNetworkPackage & _package ){
+
+    std::lock_guard<std::mutex> lock( m_mutexSendProtection );
+    m_incomingMessageData.clear();
+
+    // adjust buffer size
+    if( _package.msg.size() > (m_outcomingBufferSize + 1) ){
+        delete[] m_outcomingBuffer;
+        m_outcomingBuffer = new char[ m_outcomingBufferSize * 2 ];
+        m_outcomingBufferSize *= 2;
+    }
+
+    // send request
+    ::memcpy( m_outcomingBuffer, & _package.header, sizeof(SNetworkPackage::SHeader) );
+    char * messageSection = m_outcomingBuffer + sizeof(SNetworkPackage::SHeader);
+    ::memcpy( messageSection, _package.msg.data(), _package.msg.size() );
+
+    m_responseCatched.store( false );
+
+    const string toSend( m_outcomingBuffer, sizeof(SNetworkPackage::SHeader) + _package.msg.size() );
+    const bool rt = m_listenedObject->sendServiceMessage( toSend, MESSAGE_CONTENT_TYPE_SERVER );
+    if( ! rt ){
+        VS_LOG_ERROR << PRINT_HEADER << " couldn't send service msg [" << toSend << "]" << endl;
+        return m_incomingMessageData;
+    }
+
+    // wait response
+    std::mutex lockMutex;
+    std::unique_lock<std::mutex> cvLock( lockMutex );
+    m_cvResponseCame.wait_for( cvLock,
+                               std::chrono::milliseconds(m_settings.responseWaitTimeoutMillisec),
+                               [ this ](){ return m_responseCatched.load(); } );
+
+    m_responseCatched.store( false );
+
+    if( m_incomingMessageData.empty() ){
+        VS_LOG_WARN << PRINT_HEADER << " response wait timeouted, but message is empty" << endl;
+    }
+
+    // return reponse
+    return m_incomingMessageData;
+}
+
+void ObjreprListener::sendAsyncRequest( const SNetworkPackage & _package ){
+
+    std::lock_guard<std::mutex> lock( m_mutexSendProtection );
+
+    // dynamic growing
+    if( _package.msg.size() > (m_outcomingBufferSize + 1) ){
+        delete[] m_outcomingBuffer;
+        m_outcomingBuffer = new char[ m_outcomingBufferSize * 2 ];
+        m_outcomingBufferSize *= 2;
+    }
+
+    //
+    ::memcpy( m_outcomingBuffer, & _package.header, sizeof(SNetworkPackage::SHeader) );
+    char * messageSection = m_outcomingBuffer + sizeof(SNetworkPackage::SHeader);
+    ::memcpy( messageSection, _package.msg.data(), _package.msg.size() );
+
+#if ENABLE_DEBUG_PRINTS
+    if( _package.msg.find("\"message\":\"pong\"") == string::npos ){
+        VS_LOG_DBG << PRINT_HEADER << " send msg [" << _package.msg << "]" << endl;
+    }
 #endif
+
+    //
+    const string toSend( m_outcomingBuffer, sizeof(SNetworkPackage::SHeader) + _package.msg.size() );
+    const bool rt = m_listenedObject->sendServiceMessage( toSend, MESSAGE_CONTENT_TYPE_SERVER );
+    if( ! rt ){
+        VS_LOG_ERROR << PRINT_HEADER << " couldn't send service msg [" << toSend << "]" << endl;
+        return;
+    }
+}
 
 
 

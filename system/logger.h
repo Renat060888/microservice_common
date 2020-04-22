@@ -1,9 +1,6 @@
 #ifndef LOGGER_H
 #define LOGGER_H
 
-// TODO: ?
-#define SWITCH_LOGGER_SIMPLE
-
 #if SWITCH_LOGGER_DEBIAN_9
 #include "logger_normal.h"
 #endif

@@ -14,12 +14,15 @@ void ICommandExternal::sendResponse( const string & _outcomingMessage, void * _u
 
     assert( m_request );
 
+    m_request->setOutcomingMessage( _outcomingMessage );
+    return;
+
     // TODO: _userData - terrible solution at first look
     // Different network transports features problem, for example:
     // 1 codes for HTTP server
     // 2 route point & queue for AMQP server
     // 3 objrepr sensor id
-    // 4 ?
+    // 4 ?        
     m_request->setUserData( _userData );    
     m_request->sendMessageAsync( _outcomingMessage, m_request->m_correlationId );
 }

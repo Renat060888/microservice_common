@@ -1,17 +1,17 @@
 
 #include <sys/syscall.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <unordered_map>
 
-#include "common/ms_common_types.h"
+#include <microservice_common/system/logger.h>
+
 #include "common/ms_common_utils.h"
-#include "logger.h"
+#include "common/ms_common_types.h"
 #include "process_launcher.h"
 
 using namespace std;
+using namespace common_types;
 
 bool thread_local g_isMainThread = false;
 
@@ -20,29 +20,44 @@ static constexpr int BYTES_COUNT_READ_FROM_PIPE = 10240;
 static constexpr int TIMEOUT_TO_READ_FROM_PIPE_MILLISEC = 100;
 
 static std::mutex g_exitedChildStatusLock;
-static std::unordered_map<common_types::TPid, int> g_exitedChildStatus;
+static std::unordered_map<TPid, int> g_exitedChildStatus;
 
 void signalChildDieHandler( int sig ){
 
-    // NOTE: complex structures ( containers, mutexes, ... ) NOT allowed - function is called spurious by kernel-signal
+//    // first variant
+//    pid_t pid = 0;
+//    int status = 0;
 
+//    while( (pid = ::waitpid(-1, & status, WUNTRACED)) != -1 ){
+//        // dummy
+//    }
+
+//    PRELOG_INFO << PRINT_HEADER
+//                << " (NEW) unix signal handler: child process died, pid [" << pid << "]"
+//                << " status code [" << status
+//                << "] kill zombie..."
+//                << endl;
+
+//    return;
+
+    // second variant
     if( SIGCHLD == sig ){
         int childExitStatus = 0;
-        const pid_t childPid = ::wait( & childExitStatus );
+        const pid_t childPid = wait( & childExitStatus );
 
-//        g_exitedChildStatusLock.lock();
         // TODO: here is a misterious bug (O_o)
+//        g_exitedChildStatusLock.lock();
 //        g_exitedChildStatus.insert( {childPid, childExitStatus} );
 //        g_exitedChildStatusLock.unlock();
 
         PRELOG_INFO << PRINT_HEADER
-                    << " unix signal handler: child process died, pid [" << childPid << "]"
+                    << " unix signal handler -> child process died, pid [" << childPid << "]"
                     << " status code [" << WEXITSTATUS( childExitStatus )
                     << "] kill zombie..."
                     << endl;
     }
     else{
-        PRELOG_INFO << PRINT_HEADER << " unix signal handler: unknown signal [" << sig << "]" << endl;
+        PRELOG_INFO << PRINT_HEADER << " unix signal handler -> unknown signal [" << sig << "]" << endl;
     }
 }
 
@@ -60,7 +75,7 @@ static string convertSignalToStr( int _signal ){
     }
 }
 
-static bool killProcess( common_types::TPid _pid, int _signal ){
+static bool killProcess( TPid _pid, int _signal ){
 
     VS_LOG_INFO << PRINT_HEADER
              << " try to kill process with pid [" << _pid << "]"
@@ -257,7 +272,16 @@ ProcessLauncher::ProcessLauncher()
 {
     g_isMainThread = true; // NOTE: because ProcessLauncher is a singleton and will be created in main thread at start
 
-    sigset( SIGCHLD, & signalChildDieHandler );
+    // first variant
+    struct sigaction sigAct;
+
+    ::memset( & sigAct, 0, sizeof(sigAct) );
+    sigAct.sa_handler = signalChildDieHandler;
+
+    ::sigaction( SIGCHLD, & sigAct, nullptr );
+
+    // second variant
+//    sigset( SIGCHLD, & signalChildDieHandler );
 
     m_trChildProcessMonitoring = new std::thread( & ProcessLauncher::threadChildProcessMonitoring, this );
 }
@@ -274,7 +298,7 @@ void ProcessLauncher::runSystemClock(){
         SLaunchTask * task = m_launchTasks.back();
         m_launchTasks.pop();
 
-        VS_LOG_INFO << PRINT_HEADER << " found process task [" << task->taskId << "]. Launch it" << endl;
+//        VS_LOG_INFO << PRINT_HEADER << " found process task [" << task->taskId << "]. Launch it" << endl;
 
         task->handle = launch( task->program, task->args, task->readOutput, task->checkForDuplicate );
         task->launched.store( true );
@@ -316,12 +340,19 @@ struct SProcessObserverComparator {
     }
 };
 
-void ProcessLauncher::addObserver( IProcessObserver * _observer ){
+void ProcessLauncher::addObserver( IProcessObserver * _observer, pid_t _pidToObserve ){
 
-    // TODO: check for duplicate
+    // check for duplicate
+    for( const IProcessObserver * const observer : m_observers ){
+        if( observer == _observer ){
+            return;
+        }
+    }
 
     assert( _observer );
 
+    // TODO: for now only ONE pid
+    _observer->m_programNameToObserve = _pidToObserve;
     m_observers.push_back( _observer );
 
     // for callbacks in priority order
@@ -370,12 +401,11 @@ ProcessHandle * ProcessLauncher::launch( const std::string & _program,
         m_muHandlesLock.unlock();
     }
 
-    VS_LOG_INFO << endl;
     VS_LOG_INFO << PRINT_HEADER << " try to launch a following process [" << _program << "]" << endl;
-    for( const string & arg : _args ){
-        VS_LOG_INFO << " " << arg;
-    }
-    VS_LOG_INFO << endl;
+//    for( const string & arg : _args ){
+//        VS_LOG_INFO << " " << arg;
+//    }
+//    VS_LOG_INFO << endl;
 
     // NOTE: allocate must be done before fork()
     char wdPath[ PATH_MAX ];
@@ -405,7 +435,7 @@ ProcessHandle * ProcessLauncher::launch( const std::string & _program,
 
     m_cvChildProcessMonitoring.notify_one();
 
-    VS_LOG_INFO << PRINT_HEADER << " initiate fork..." << endl;
+//    VS_LOG_INFO << PRINT_HEADER << " initiate fork..." << endl;
 
     // ---------------------------------
     // (I) copy this process
@@ -424,14 +454,19 @@ ProcessHandle * ProcessLauncher::launch( const std::string & _program,
         return handle;
     }
     else{
-//        LOG_TRACE << PRINT_HEADER
-//                 << " fork() success, child process is started with pid " << getpid()
-//                 << " Begin execv()..."
-//                 << endl;
+        VS_LOG_TRACE << PRINT_HEADER
+                     << " fork() success, child process is started with pid " << getpid()
+                     << " Begin execv()..."
+                     << endl;
 
         handle->setRole( ProcessHandle::EProcessRole::CHILD, getpid() );
 
         // TODO: restore environment variables
+
+
+        // prevent signal propagation to child process from terminal ( )
+        const int rt = ::setpgid( ::getpid(), 0 );
+
 
         // ---------------------------------
         // (II) replace by new binary image
@@ -552,6 +587,8 @@ void ProcessLauncher::close( ProcessHandle * _handle, int _signal ){
 
 void ProcessLauncher::threadChildProcessMonitoring(){
 
+    VS_LOG_INFO << PRINT_HEADER << " start a child process monitoring THREAD" << endl;
+
     while( ! m_shutdown ){
 
         // sleep thread if no handles
@@ -568,9 +605,9 @@ void ProcessLauncher::threadChildProcessMonitoring(){
             break;
         }
 
-        VS_LOG_INFO << PRINT_HEADER
-                 << " child process monitoring THREAD is waked up"
-                 << endl;
+//        VS_LOG_INFO << PRINT_HEADER
+//                 << " child process monitoring THREAD is waked up"
+//                 << endl;
 
         m_muHandlesLock.lock();
         bool childsExist = ( ! m_handles.empty() || ! m_launchTasks.empty() );
@@ -596,8 +633,6 @@ void ProcessLauncher::threadChildProcessMonitoring(){
                 }
 
                 if( ! process->isRunning() ){
-                    VS_LOG_WARN << PRINT_HEADER << " process crashed, pid = " << process->getChildPid() << endl;
-
                     if( g_exitedChildStatusLock.try_lock() ){
                         auto iter = g_exitedChildStatus.find( process->getChildPid() );
                         if( iter != g_exitedChildStatus.end() ){
@@ -638,7 +673,9 @@ void ProcessLauncher::threadChildProcessMonitoring(){
             // TODO: delete zombies ?
             for( ProcessHandle * zombie : diedProcesses ){
                 for( IProcessObserver * observer : m_observers ){
-                    observer->callbackProcessCrashed( zombie );
+//                    if( zombie->getChildPid() == observer->m_pidToObserve ){
+                        observer->callbackProcessCrashed( zombie );
+//                    }
                 }
             }
 
@@ -646,9 +683,9 @@ void ProcessLauncher::threadChildProcessMonitoring(){
             this_thread::sleep_for( chrono::milliseconds(5) );
         }
 
-        VS_LOG_INFO << PRINT_HEADER
-                 << " child process monitoring THREAD is going to sleep"
-                 << endl;
+//        VS_LOG_INFO << PRINT_HEADER
+//                 << " child process monitoring THREAD is going to sleep"
+//                 << endl;
     }
 
     VS_LOG_INFO << PRINT_HEADER
