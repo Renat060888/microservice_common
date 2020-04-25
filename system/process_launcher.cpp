@@ -1,5 +1,6 @@
 
 #include <sys/syscall.h>
+#include <sys/wait.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <unordered_map>
@@ -43,7 +44,7 @@ void signalChildDieHandler( int sig ){
     // second variant
     if( SIGCHLD == sig ){
         int childExitStatus = 0;
-        const pid_t childPid = wait( & childExitStatus );
+        const pid_t childPid = ::wait( & childExitStatus );
 
         // TODO: here is a misterious bug (O_o)
 //        g_exitedChildStatusLock.lock();
@@ -765,6 +766,7 @@ bool ProcessLauncher::releaseLock( std::string _lockName ){
         return false;
     }
 }
+
 
 
 

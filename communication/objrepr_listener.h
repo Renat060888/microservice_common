@@ -1,6 +1,8 @@
 #ifndef OBJREPR_LISTENER_H
 #define OBJREPR_LISTENER_H
 
+#ifdef OBJREPR_LIBRARY_EXIST
+
 #include <mutex>
 #include <condition_variable>
 
@@ -67,5 +69,7 @@ private:
     std::condition_variable m_cvResponseCame;
 };
 using PObjreprListener = std::shared_ptr<ObjreprListener>;
+
+#endif
 
 #endif // OBJREPR_LISTENER_H

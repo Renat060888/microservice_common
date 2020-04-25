@@ -117,7 +117,9 @@ void CommunicationGatewayFacade::shutdown(){
     VS_LOG_INFO << PRINT_HEADER << " shutdown success" << endl;
 }
 
+#ifdef OBJREPR_LIBRARY_EXIST
 PObjreprListener g_objreprListener;
+#endif
 
 bool CommunicationGatewayFacade::initialConnections( const SInitSettings & _settings ){
 
@@ -210,6 +212,7 @@ bool CommunicationGatewayFacade::initialConnections( const SInitSettings & _sett
 
     // objrepr bus
     if( _settings.paramsForInitialObjrepr.enable ){
+#ifdef OBJREPR_LIBRARY_EXIST
         ObjreprListener::SInitSettings settings;
         settings.listenedObjectId = _settings.paramsForInitialObjrepr.serverMirrorIdInContext;
         settings.withPackageHeader = false;
@@ -222,6 +225,7 @@ bool CommunicationGatewayFacade::initialConnections( const SInitSettings & _sett
         objreprListener->addObserver( this );
         m_externalNetworks.push_back( objreprListener );
         g_objreprListener = objreprListener;
+#endif
     }
 
     // TODO: shared memory
@@ -255,7 +259,11 @@ PNetworkClient CommunicationGatewayFacade::getInitialSharedMemConnection(){
 }
 
 PNetworkClient CommunicationGatewayFacade::getInitialObjreprConnection(){
+#ifdef OBJREPR_LIBRARY_EXIST
     return g_objreprListener;
+#else
+    return nullptr;
+#endif
 }
 
 PNetworkClient CommunicationGatewayFacade::getNewAmqpConnection( const SConnectParamsAmqp & _params ){

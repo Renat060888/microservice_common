@@ -1,3 +1,4 @@
+#ifdef OBJREPR_LIBRARY_EXIST
 
 #include <objrepr/reprServer.h>
 
@@ -361,6 +362,6 @@ void ObjreprListener::sendAsyncRequest( const SNetworkPackage & _package ){
     }
 }
 
-
+#endif
 
 
