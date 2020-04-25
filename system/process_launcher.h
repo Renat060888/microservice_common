@@ -44,19 +44,19 @@ public:
 
     std::string findArgValue( std::string _argKey );
     bool isReadOutput(){ return m_settings.readOuput; }
+    bool isRunning();
+
 
     // messaging
     void sendToChildStdin( const std::string & _msg );
     bool isMessageFromChildStdoutExist();
     const std::string & readFromChildStdout();
 
-
 private:
     // control
     void wait();
     void requestForClose( int _signal );
     void kill( int _signal );
-    bool isRunning();
 
     void setRole( EProcessRole _role, TProcessId _id );
     void setExitStatus( int _code );
@@ -80,6 +80,7 @@ public:
     virtual void callbackProcessCrashed( ProcessHandle * _handle ) = 0;
 
     int32_t m_priority;
+    std::string m_programNameToObserve;
 };
 
 // ------------------------------------------------------------------------
@@ -118,7 +119,7 @@ public:
 
 
     // notify
-    void addObserver( IProcessObserver * _observer );
+    void addObserver( IProcessObserver * _observer, pid_t _processToObserve );
     void removeObserver( IProcessObserver * _observer );
 
     // control
@@ -139,7 +140,6 @@ public:
     bool getLock( std::string _lockName, bool _createLock = false );
     bool releaseLock( std::string _lockName );
 
-
 private:
     ProcessLauncher();
     ~ProcessLauncher();
@@ -151,6 +151,7 @@ private:
     void runSystemClock();
 
     bool isThisMainThread();
+    void setChildProcess();
 
     // data
     std::vector<ProcessHandle *> m_handles;
@@ -161,8 +162,8 @@ private:
     std::map<std::string, sem_t *> m_processLocks;
 
     // service
-    std::thread * m_trChildProcessMonitoring;
     int32_t m_launchTaskIdGenerator;
+    std::thread * m_trChildProcessMonitoring;    
     std::condition_variable m_cvChildProcessMonitoring;
     std::mutex m_muHandlesLock;
     std::mutex m_muLaunchTaskLock;

@@ -204,6 +204,7 @@ struct SUserState {
     TPid userPid;
     int64_t lastPingMillisec;
 };
+using PUserState = std::shared_ptr<SUserState>;
 
 struct FunctorObjectStep {
     FunctorObjectStep( TLogicStep _stepToFind )

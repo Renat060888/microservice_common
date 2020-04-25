@@ -153,6 +153,8 @@ bool AConfigReader::parseBase( const string & _content ){
     m_parameters.COMMUNICATION_AMQP_SERVER_PORT = setParameterNew<int32_t>( amqpClient, "port", 5672 );
     m_parameters.COMMUNICATION_AMQP_LOGIN = setParameterNew<std::string>( amqpClient, "login", string("scuser") );
     m_parameters.COMMUNICATION_AMQP_PASS = setParameterNew<std::string>( amqpClient, "pass", string("scpass") );
+    boost::property_tree::ptree objreprBus = communication.get_child("objrepr_service_bus");
+    m_parameters.COMMUNICATION_OBJREPR_SERVICE_BUS_ENABLE = setParameterNew<bool>( objreprBus, "enable", false );
 
 
     boost::property_tree::ptree objrepr = config.get_child("objrepr");

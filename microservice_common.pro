@@ -17,8 +17,8 @@ QMAKE_CXXFLAGS += -Wno-unused-variable
 
 # TODO: add defines to logger, system monitor, restbed webserver, database, etc...
 DEFINES += \
-    SWITCH_LOGGER_ASTRA \
 #    SWITCH_LOGGER_SIMPLE \
+    SWITCH_LOGGER_ASTRA \
     OBJREPR_LIBRARY_EXIST \
 
 INCLUDEPATH += \
@@ -83,7 +83,8 @@ SOURCES += \
         unit_tests/communication_tests.cpp \
     unit_tests/storage_tests.cpp \
         unit_tests/system_tests.cpp \
-    system/system_environment_facade.cpp
+    system/system_environment_facade.cpp \
+    communication/network_splitter.cpp
 
 HEADERS += \
     3rd_party/EdUrlParser.h \
@@ -132,4 +133,5 @@ HEADERS += \
     unit_tests/storage_tests.h \
     unit_tests/system_tests.h \
     analyze/dummy.h \
-    system/system_environment_facade.h
+    system/system_environment_facade.h \
+    communication/network_splitter.h

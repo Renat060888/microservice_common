@@ -6,6 +6,7 @@
 #include "shell.h"
 #include "websocket_server.h"
 #include "shared_memory_server.h"
+#include "objrepr_listener.h"
 
 #include "system/logger.h"
 #include "system/a_config_reader.h"
@@ -116,14 +117,19 @@ void CommunicationGatewayFacade::shutdown(){
     VS_LOG_INFO << PRINT_HEADER << " shutdown success" << endl;
 }
 
+PObjreprListener g_objreprListener;
+
 bool CommunicationGatewayFacade::initialConnections( const SInitSettings & _settings ){
 
     // shell ( domain socket )
     Shell::SInitSettings settings1;
     settings1.shellMode = ( _settings.paramsForInitialShell.client ? Shell::EShellMode::CLIENT : Shell::EShellMode::SERVER );
-    settings1.asyncServerMode = false;
+    settings1.asyncServerMode = _settings.paramsForInitialShell.asyncServerMode;
+    settings1.asyncClientModeRequests = _settings.paramsForInitialShell.asyncClientModeRequests;
     settings1.socketFileName = _settings.paramsForInitialShell.socketName;
-    settings1.messageMode = Shell::EMessageMode::WITHOUT_SIZE;
+    settings1.messageMode = ( _settings.paramsForInitialShell.withSizeHeader
+                              ? Shell::EMessageMode::WITH_SIZE
+                              : Shell::EMessageMode::WITHOUT_SIZE );
 
     PShell shell = std::make_shared<Shell>( getConnectionId() );
     if( ! shell->init(settings1) ){
@@ -202,6 +208,22 @@ bool CommunicationGatewayFacade::initialConnections( const SInitSettings & _sett
 #endif
     }
 
+    // objrepr bus
+    if( _settings.paramsForInitialObjrepr.enable ){
+        ObjreprListener::SInitSettings settings;
+        settings.listenedObjectId = _settings.paramsForInitialObjrepr.serverMirrorIdInContext;
+        settings.withPackageHeader = false;
+
+        PObjreprListener objreprListener = std::make_shared<ObjreprListener>( getConnectionId() );
+        if( ! objreprListener->init(settings) ){
+            return false;
+        }
+
+        objreprListener->addObserver( this );
+        m_externalNetworks.push_back( objreprListener );
+        g_objreprListener = objreprListener;
+    }
+
     // TODO: shared memory
 
 
@@ -209,27 +231,31 @@ bool CommunicationGatewayFacade::initialConnections( const SInitSettings & _sett
 }
 
 PNetworkClient CommunicationGatewayFacade::getInitialAmqpConnection(){
-
+    assert( false && "TODO: do" );
 }
 
 PNetworkClient CommunicationGatewayFacade::getInitialShellConnection(){
-
+    assert( false && "TODO: do" );
 }
 
 PNetworkClient CommunicationGatewayFacade::getInitialHTTPClientConnection(){
-
+    assert( false && "TODO: do" );
 }
 
 PNetworkProvider CommunicationGatewayFacade::getInitialHTTPServerConnection(){
-
+    assert( false && "TODO: do" );
 }
 
 PNetworkProvider CommunicationGatewayFacade::getInitialWebsocketServerConnection(){
-
+    assert( false && "TODO: do" );
 }
 
 PNetworkClient CommunicationGatewayFacade::getInitialSharedMemConnection(){
+    assert( false && "TODO: do" );
+}
 
+PNetworkClient CommunicationGatewayFacade::getInitialObjreprConnection(){
+    return g_objreprListener;
 }
 
 PNetworkClient CommunicationGatewayFacade::getNewAmqpConnection( const SConnectParamsAmqp & _params ){
@@ -245,17 +271,17 @@ PNetworkClient CommunicationGatewayFacade::getNewShellConnection( const SConnect
     // shell ( domain socket )
     Shell::SInitSettings settings1;
     settings1.shellMode = ( _params.client ? Shell::EShellMode::CLIENT : Shell::EShellMode::SERVER );
-    settings1.asyncServerMode = false;
+    settings1.asyncServerMode = _params.asyncServerMode;
+    settings1.asyncClientModeRequests = _params.asyncClientModeRequests;
     settings1.socketFileName = _params.socketName;
-    settings1.messageMode = Shell::EMessageMode::WITHOUT_SIZE;
+    settings1.messageMode = ( _params.withSizeHeader
+                              ? Shell::EMessageMode::WITH_SIZE
+                              : Shell::EMessageMode::WITHOUT_SIZE );
 
     PShell shell = std::make_shared<Shell>( getConnectionId() );
     if( ! shell->init(settings1) ){
         return nullptr;
     }
-
-    shell->addObserver( this );
-    m_externalNetworks.push_back( shell );
 
     return shell;
 }
