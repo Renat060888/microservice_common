@@ -185,6 +185,8 @@ private:
     std::vector<PNetworkProvider> m_internalNetworks;
     std::unordered_map<INetworkEntity::TConnectionId, PNetworkProvider> m_internalNetworksById;
 
+    PNetworkClient m_initialAmqpClient;
+
     // service
     std::queue<PCommand> m_arrivedCommands;
     std::mutex m_mutexCommand;

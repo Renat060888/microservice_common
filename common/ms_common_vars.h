@@ -20,7 +20,7 @@ static const std::string COMMAND_ACTION = "cmd_action"; // start
 static const std::string USER_ID = "user_id";
 static const std::string USER_IP = "user_ip";
 static const std::string USER_PID = "user_pid";
-static const std::string CONTEXT_NAME = "ctx_name";
+static const std::string CONTEXT_NAME = "context_name";
 static const std::string MISSION_NAME = "mission_name";
 
 }
@@ -103,6 +103,9 @@ namespace wal_user_registrations {
     const std::string COLLECTION_NAME = "wal_user_registrations";
 
     const std::string USER_ID = "user_id";
+    const std::string USER_IP = "user_ip";
+    const std::string USER_PID = "user_pid";
+    const std::string REGISTERED_AT_TIME_MILLISEC = "registered_at_time_millisec";
 }
 
 }

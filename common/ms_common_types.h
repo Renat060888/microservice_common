@@ -190,6 +190,11 @@ struct SEventsSessionInfo {
         steps.empty() );
     }
 
+    // for sort
+    bool operator<( const SEventsSessionInfo & _rhs ){
+        return ( this->number < _rhs.number );
+    }
+
     TSessionNum number;
     TLogicStep minLogicStep;
     TLogicStep maxLogicStep;

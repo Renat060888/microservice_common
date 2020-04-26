@@ -175,6 +175,7 @@ bool CommunicationGatewayFacade::initialConnections( const SInitSettings & _sett
 
         amqpClient->addObserver( this );
         m_externalNetworks.push_back( amqpClient );
+        m_initialAmqpClient = amqpClient;
 
         // amqp controller ( with specialization )
         AmqpController::SInitSettings settings2;
@@ -235,7 +236,7 @@ bool CommunicationGatewayFacade::initialConnections( const SInitSettings & _sett
 }
 
 PNetworkClient CommunicationGatewayFacade::getInitialAmqpConnection(){
-    assert( false && "TODO: do" );
+    return m_initialAmqpClient;
 }
 
 PNetworkClient CommunicationGatewayFacade::getInitialShellConnection(){

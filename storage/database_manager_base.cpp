@@ -765,9 +765,13 @@ common_types::TPersistenceSetId DatabaseManagerBase::createNewPersistenceId(){
 
 std::vector<SEventsSessionInfo> DatabaseManagerBase::getPersistenceSetSessions( TPersistenceSetId _persId ){
 
-    bson_t * cmd = BCON_NEW(    "distinct", BCON_UTF8( getTableName(_persId).c_str() ),
-                                "key", BCON_UTF8( mongo_fields::analytic::detected_object::SESSION.c_str() ),
-                                "$sort", "{", "logic_time", BCON_INT32(-1), "}"
+    const string tableName = getTableName(_persId);
+    bson_t * cmd = BCON_NEW(    "distinct", BCON_UTF8( tableName.c_str() ),
+                                "key", BCON_UTF8( mongo_fields::analytic::detected_object::SESSION.c_str() )
+
+                                // TODO: what wrong with this shit ?
+//                                "sort", "{", "logic_time", BCON_INT32(-1), "}"
+//                                "query","{", "$sort", "{", "logic_time", BCON_INT32(-1), "}", "}"
                             );
 
     bson_t reply;
@@ -777,6 +781,12 @@ std::vector<SEventsSessionInfo> DatabaseManagerBase::getPersistenceSetSessions( 
                                                     NULL,
                                                     & reply,
                                                     & error );
+
+    if( 0 == rt ){
+        VS_LOG_ERROR << PRINT_HEADER << " get sessions failed, reason: " << error.message << endl;
+        bson_destroy( cmd );
+        return std::vector<SEventsSessionInfo>();
+    }
 
     // fill array with session numbers
     bson_iter_t iter;
@@ -811,6 +821,8 @@ std::vector<SEventsSessionInfo> DatabaseManagerBase::getPersistenceSetSessions( 
 
     bson_destroy( cmd );
     bson_destroy( & reply );
+
+    std::sort( out.begin(), out.end() );
     return out;
 }
 
@@ -1235,14 +1247,82 @@ void DatabaseManagerBase::removeProcessEvent( common_types::TPid _pid ){
 // wal users
 bool DatabaseManagerBase::writeUserRegistration( const common_types::SWALUserRegistration & _registration ){
 
+    bson_t * doc = BCON_NEW( mongo_fields::wal_user_registrations::USER_ID.c_str(), BCON_UTF8( _registration.registerId.c_str() ),
+                             mongo_fields::wal_user_registrations::USER_IP.c_str(), BCON_UTF8( _registration.userIp.c_str() ),
+                             mongo_fields::wal_user_registrations::USER_PID.c_str(), BCON_INT32( _registration.userPid ),
+                             mongo_fields::wal_user_registrations::REGISTERED_AT_TIME_MILLISEC.c_str(), BCON_UTF8( _registration.registeredAtDateTime.c_str() )
+                           );
+
+    bson_error_t error;
+    const bool rt = mongoc_collection_insert( m_tableWALUserRegistrations,
+                                              MONGOC_INSERT_NONE,
+                                              doc,
+                                              NULL,
+                                              & error );
+
+    if( 0 == rt ){
+        VS_LOG_ERROR << PRINT_HEADER << " user registration write failed, reason: " << error.message << endl;
+        bson_destroy( doc );
+        return false;
+    }
+
+    bson_destroy( doc );
+    return true;
 }
 
 std::vector<common_types::SWALUserRegistration> DatabaseManagerBase::getUserRegistrations(){
 
+    bson_t * query = BCON_NEW( nullptr );
+    mongoc_cursor_t * cursor = mongoc_collection_find(  m_tableWALUserRegistrations,
+                                                        MONGOC_QUERY_NONE,
+                                                        0,
+                                                        0,
+                                                        1000000, // 10000 ~= inf
+                                                        query,
+                                                        nullptr,
+                                                        nullptr );
+
+    std::vector<common_types::SWALUserRegistration> out;
+    const bson_t * doc;
+    while( mongoc_cursor_next( cursor, & doc ) ){
+        uint len;
+        bson_iter_t iter;
+
+        common_types::SWALUserRegistration userReg;
+        bson_iter_init_find( & iter, doc, mongo_fields::wal_user_registrations::USER_ID.c_str() );
+        userReg.registerId = bson_iter_utf8( & iter, & len );
+        bson_iter_init_find( & iter, doc, mongo_fields::wal_user_registrations::USER_IP.c_str() );
+        userReg.userIp = bson_iter_utf8( & iter, & len );
+        bson_iter_init_find( & iter, doc, mongo_fields::wal_user_registrations::USER_PID.c_str() );
+        userReg.userPid = bson_iter_int32( & iter );
+        bson_iter_init_find( & iter, doc, mongo_fields::wal_user_registrations::REGISTERED_AT_TIME_MILLISEC.c_str() );
+        userReg.registeredAtDateTime = bson_iter_utf8( & iter, & len );
+
+        out.push_back( userReg );
+    }
+
+    mongoc_cursor_destroy( cursor );
+    bson_destroy( query );
+
+    return out;
 }
 
 void DatabaseManagerBase::removeUserRegistration( common_types::SWALUserRegistration::TRegisterId _id ){
 
+    bson_t * query = nullptr;
+    if( ALL_REGISTRATION_IDS == _id ){
+        query = BCON_NEW( nullptr );
+    }
+    else{
+        query = BCON_NEW( mongo_fields::wal_user_registrations::USER_ID.c_str(), BCON_UTF8( _id.c_str() ));
+    }
+
+    const bool result = mongoc_collection_remove( m_tableWALUserRegistrations, MONGOC_REMOVE_NONE, query, nullptr, nullptr );
+    if( ! result ){
+        // TODO: do
+    }
+
+    bson_destroy( query );
 }
 
 
