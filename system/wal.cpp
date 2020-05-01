@@ -39,6 +39,11 @@ public:
     virtual void setOutcomingMessage( const std::string & /*_msg*/ ) override {
         // dummy
     }
+
+    virtual std::string sendMessageAsync( const std::string & /*_msg*/, const std::string & /*_correlationId*/ = "" ) override {
+        // dummy
+        return std::string();
+    }
 };
 using PRequestFromWAL = std::shared_ptr<RequestFromWAL>;
 
