@@ -88,12 +88,24 @@ struct SPersistenceMetadataDescr {
 
     static constexpr TPersistenceSetId INVALID_PERSISTENCE_ID = -1;
 
+    bool operator==( const SPersistenceMetadataDescr & _rhs ) const {
+        return ( this->persistenceSetId == _rhs.persistenceSetId
+                 && this->contextId == _rhs.contextId
+                 && this->missionId == _rhs.missionId
+                 && this->timeStepIntervalMillisec == _rhs.timeStepIntervalMillisec
+                 && this->lastRecordedSession == _rhs.lastRecordedSession
+                 && this->sourceType == _rhs.sourceType
+                 && this->dataType == _rhs.dataType
+                );
+    }
+
     TPersistenceSetId persistenceSetId;
     TContextId contextId;
     TMissionId missionId;
     int64_t timeStepIntervalMillisec;
     TSessionNum lastRecordedSession;
     EPersistenceSourceType sourceType;
+    EPersistenceDataType dataType; // TODO: do
 };
 
 struct SPersistenceMetadataVideo : SPersistenceMetadataDescr {
@@ -102,11 +114,15 @@ struct SPersistenceMetadataVideo : SPersistenceMetadataDescr {
 
 struct SPersistenceMetadataDSS : SPersistenceMetadataDescr {
     bool realData;
-    EPersistenceDataType dataType;
 };
 
 struct SPersistenceMetadataRaw : SPersistenceMetadataDescr {
 
+    bool operator==( const SPersistenceMetadataRaw & _rhs ) const {
+        return ( SPersistenceMetadataDescr::operator==(_rhs) && (this->a == _rhs.a) );
+    }
+
+    int a;
 };
 
 
@@ -154,6 +170,10 @@ struct SPersistenceSetFilter {
         , minLogicStep(0)
     {}
 
+    SPersistenceSetFilter( TPersistenceSetId _persistenceSetId )
+        : persistenceSetId(_persistenceSetId)
+    {}
+
     TPersistenceSetId persistenceSetId;
 
     TSessionNum sessionNum;
@@ -178,16 +198,20 @@ struct SEventsSessionInfo {
         minTimestampMillisec = 0;
         maxTimestampMillisec = 0;
         steps.clear();
+        emptyStepsBegin = 0;
+        emptyStepsEnd = 0;
     }
 
     bool empty(){
         return (
-        number == 0 &&
-        minLogicStep == 0 &&
-        maxLogicStep == 0 &&
-        minTimestampMillisec == 0 &&
-        maxTimestampMillisec == 0 &&
-        steps.empty() );
+        0 == number &&
+        0 == minLogicStep &&
+        0 == maxLogicStep &&
+        0 == minTimestampMillisec &&
+        0 == maxTimestampMillisec&&
+        steps.empty() &&
+        0 == emptyStepsBegin &&
+        0 == emptyStepsEnd );
     }
 
     // for sort
@@ -201,6 +225,8 @@ struct SEventsSessionInfo {
     int64_t minTimestampMillisec;
     int64_t maxTimestampMillisec;
     std::vector<SObjectStep> steps;
+    int32_t emptyStepsBegin;
+    int32_t emptyStepsEnd;
 };
 
 struct SUserState {

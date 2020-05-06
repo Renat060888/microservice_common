@@ -1,17 +1,25 @@
 #ifndef MS_COMMON_VARS_H
 #define MS_COMMON_VARS_H
 
+#include <limits>
+
 #include "ms_common_types.h"
 
 namespace common_vars {
 
-static constexpr common_types::TContextId ALL_CONTEXT_ID = 0xFFFFFFFF;
-
+// ------------------------------------------------------------------------
+// constants
+// ------------------------------------------------------------------------
+static constexpr common_types::TContextId ALL_CONTEXT_ID = std::numeric_limits<common_types::TContextId>::max();
 static constexpr common_types::TContextId INVALID_CONTEXT_ID = 0;
-static constexpr common_types::TMissionId INVALID_MISSION_ID = 0;
 static constexpr common_types::TSessionNum INVALID_SESSION_NUM = -1;
+static constexpr common_types::TSessionNum ALL_SESSION_NUM = std::numeric_limits<common_types::TSessionNum>::max();
+static constexpr common_types::TMissionId INVALID_MISSION_ID = 0;
 static constexpr common_types::TLogicStep INVALID_LOGIC_STEP = -1;
 
+// ------------------------------------------------------------------------
+// network commands
+// ------------------------------------------------------------------------
 namespace cmd {
 static const std::string COMMAND_TYPE = "cmd_type"; // analyze
 static const std::string COMMAND_NAME = "cmd_name"; // player
@@ -25,11 +33,11 @@ static const std::string MISSION_NAME = "mission_name";
 
 }
 
+// ------------------------------------------------------------------------
+// database fields
+// ------------------------------------------------------------------------
 namespace mongo_fields {
-
-
 namespace analytic {
-
     const std::string COLLECTION_NAME = "analytic_events";
 
     const std::string JSON = "json";
@@ -51,6 +59,7 @@ namespace detected_object {
 
 }
 
+// metadata
 namespace persistence_set_metadata {
     const std::string COLLECTION_NAME = "persistence_set_metadata";
 
@@ -78,9 +87,24 @@ namespace persistence_set_metadata_raw {
 namespace persistence_set_metadata_dss {
     const std::string COLLECTION_NAME = "persistence_set_metadata_dss";
 
-    const std::string SENSOR_ID = "sensor_id";
+    const std::string REAL = "real";
 }
 
+// description
+namespace persistence_set_description {
+    const std::string COLLECTION_NAME = "persistence_set_description";
+
+    const std::string PERSISTENCE_ID = "persistence_id";
+    const std::string SESSION_NUM = "session_num";
+    const std::string LOGIC_TIME_MAX = "logic_time_max";
+    const std::string LOGIC_TIME_MIN = "logic_time_min";
+    const std::string ASTRO_TIME_MAX = "astro_time_max";
+    const std::string ASTRO_TIME_MIN = "astro_time_min";
+    const std::string EMPTY_STEPS_BEGIN = "empty_steps_begin";
+    const std::string EMPTY_STEPS_END = "empty_steps_end";
+}
+
+// wal
 namespace wal_client_operations {
     const std::string COLLECTION_NAME = "wal_client_operations";
 

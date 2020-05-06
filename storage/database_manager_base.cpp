@@ -23,21 +23,37 @@ const std::string DatabaseManagerBase::ALL_CLIENT_OPERATIONS = "";
 const common_types::TPid DatabaseManagerBase::ALL_PROCESS_EVENTS = 0;
 const std::string DatabaseManagerBase::ALL_REGISTRATION_IDS = "";
 
+static string getTableInfixNameByDataType( const EPersistenceDataType _type ){
+    switch( _type ){
+    case EPersistenceDataType::TRAJECTORY : {
+        return "traj";
+        break;
+    }
+    case EPersistenceDataType::WEATHER : {
+        return "weather";
+        break;
+    }
+    default : {
+        assert( false && "incorrect data type" );
+    }
+    }
+}
+
 DatabaseManagerBase::DatabaseManagerBase()
     : m_mongoClient(nullptr)
-    , m_database(nullptr)
+    , m_mongoDatabase(nullptr)
 {
 
 }
 
-DatabaseManagerBase::~DatabaseManagerBase()
-{    
+DatabaseManagerBase::~DatabaseManagerBase(){    
+
     mongoc_cleanup();
 
     for( mongoc_collection_t * collect : m_allTables ){
         mongoc_collection_destroy( collect );
     }
-    mongoc_database_destroy( m_database );
+    mongoc_database_destroy( m_mongoDatabase );
     mongoc_client_destroy( m_mongoClient );
 }
 
@@ -83,42 +99,47 @@ bool DatabaseManagerBase::init( SInitSettings _settings ){
         return false;
     }
 
-    m_database = mongoc_client_get_database( m_mongoClient, _settings.databaseName.c_str() );
+    m_mongoDatabase = mongoc_client_get_database( m_mongoClient, _settings.databaseName.c_str() );
 
-    const string tableNamePrefix = "hometest_";
+    m_tableNamePrefix = _settings.databaseName + "_";
 
     m_tableWALClientOperations = mongoc_client_get_collection( m_mongoClient,
         _settings.databaseName.c_str(),
-        (tableNamePrefix + mongo_fields::wal_client_operations::COLLECTION_NAME).c_str() );
+        (m_tableNamePrefix + mongo_fields::wal_client_operations::COLLECTION_NAME).c_str() );
 
     m_tableWALProcessEvents = mongoc_client_get_collection( m_mongoClient,
         _settings.databaseName.c_str(),
-        (tableNamePrefix + mongo_fields::wal_process_events::COLLECTION_NAME).c_str() );
+        (m_tableNamePrefix + mongo_fields::wal_process_events::COLLECTION_NAME).c_str() );
 
     m_tableWALUserRegistrations = mongoc_client_get_collection( m_mongoClient,
         _settings.databaseName.c_str(),
-        (tableNamePrefix + mongo_fields::wal_user_registrations::COLLECTION_NAME).c_str() );
+        (m_tableNamePrefix + mongo_fields::wal_user_registrations::COLLECTION_NAME).c_str() );
 
-    m_tablePersistenceDescr = mongoc_client_get_collection( m_mongoClient,
+    m_tablePersistenceMetadata = mongoc_client_get_collection( m_mongoClient,
         _settings.databaseName.c_str(),
-        (tableNamePrefix + mongo_fields::persistence_set_metadata::COLLECTION_NAME).c_str() );
+        (m_tableNamePrefix + mongo_fields::persistence_set_metadata::COLLECTION_NAME).c_str() );
+
+    m_tablePersistenceDescription = mongoc_client_get_collection( m_mongoClient,
+        _settings.databaseName.c_str(),
+        (m_tableNamePrefix + mongo_fields::persistence_set_description::COLLECTION_NAME).c_str() );
 
     m_tablePersistenceFromVideo = mongoc_client_get_collection( m_mongoClient,
         _settings.databaseName.c_str(),
-        (tableNamePrefix + mongo_fields::persistence_set_metadata_video::COLLECTION_NAME).c_str() );
+        (m_tableNamePrefix + mongo_fields::persistence_set_metadata_video::COLLECTION_NAME).c_str() );
 
     m_tablePersistenceFromRaw = mongoc_client_get_collection( m_mongoClient,
         _settings.databaseName.c_str(),
-        (tableNamePrefix + mongo_fields::persistence_set_metadata_raw::COLLECTION_NAME).c_str() );
+        (m_tableNamePrefix + mongo_fields::persistence_set_metadata_raw::COLLECTION_NAME).c_str() );
 
     m_tablePersistenceFromDSS = mongoc_client_get_collection( m_mongoClient,
         _settings.databaseName.c_str(),
-        (tableNamePrefix + mongo_fields::persistence_set_metadata_dss::COLLECTION_NAME).c_str() );
+        (m_tableNamePrefix + mongo_fields::persistence_set_metadata_dss::COLLECTION_NAME).c_str() );
 
     m_allTables.push_back( m_tableWALClientOperations );
     m_allTables.push_back( m_tableWALProcessEvents );
     m_allTables.push_back( m_tableWALUserRegistrations );
-    m_allTables.push_back( m_tablePersistenceDescr );
+    m_allTables.push_back( m_tablePersistenceMetadata );
+    m_allTables.push_back( m_tablePersistenceDescription );
     m_allTables.push_back( m_tablePersistenceFromVideo );
     m_allTables.push_back( m_tablePersistenceFromRaw );
     m_allTables.push_back( m_tablePersistenceFromDSS );
@@ -132,12 +153,11 @@ inline bool DatabaseManagerBase::createIndex( const std::string & _tableName, co
     //
     bson_t keys;
     bson_init( & keys );
-
     for( const string & key : _fieldNames ){
         BSON_APPEND_INT32( & keys, key.c_str(), 1 );
     }
 
-    //
+    // create Q
     char * indexName = mongoc_collection_keys_to_index_string( & keys );
     bson_t * createIndex = BCON_NEW( "createIndexes",
                                      BCON_UTF8(_tableName.c_str()),
@@ -148,15 +168,14 @@ inline bool DatabaseManagerBase::createIndex( const std::string & _tableName, co
                                      "]"
                                 );
 
-    //
+    // perform Q
     bson_t reply;
     bson_error_t error;
-    const bool rt = mongoc_database_command_simple( m_database,
+    const bool rt = mongoc_database_command_simple( m_mongoDatabase,
                                                     createIndex,
                                                     NULL,
                                                     & reply,
                                                     & error );
-
 
     if( ! rt ){
         VS_LOG_ERROR << PRINT_HEADER << " index creation failed, reason: " << error.message << endl;
@@ -181,8 +200,8 @@ inline void DatabaseManagerBase::createPayloadTableRef( common_types::TPersisten
 
     // TODO: each time when creating ref ?
     createIndex( _tableName, {mongo_fields::analytic::detected_object::SESSION,
-                             mongo_fields::analytic::detected_object::LOGIC_TIME}
-               );
+            mongo_fields::analytic::detected_object::LOGIC_TIME}
+            );
 
     m_tablesByPersistenceId.insert( {_persId, contextTable} );
     m_tableNameByPersistenceId.insert( {_persId, _tableName} );
@@ -247,21 +266,22 @@ std::vector<SPersistenceTrajectory> DatabaseManagerBase::readTrajectoryData( con
     bson_t * projection = nullptr;
     bson_t * query = nullptr;
 
-    // TODO: clarify load mode - only one step, steps range, whole data
-
-    if( _filter.minLogicStep == _filter.maxLogicStep ){
+    // only one step
+    if( (_filter.minLogicStep == _filter.maxLogicStep) && _filter.minLogicStep >= 0 ){
         query = BCON_NEW( "$and", "[", "{", mongo_fields::analytic::detected_object::SESSION.c_str(), BCON_INT32(_filter.sessionNum), "}",
                                        "{", mongo_fields::analytic::detected_object::LOGIC_TIME.c_str(), "{", "$eq", BCON_INT64(_filter.minLogicStep), "}", "}",
                                   "]"
                         );
     }
-    else if( _filter.minLogicStep != 0 || _filter.maxLogicStep != 0 ){
+    // steps range
+    else if( _filter.minLogicStep >= 0 && _filter.maxLogicStep >= 0 ){
         query = BCON_NEW( "$and", "[", "{", mongo_fields::analytic::detected_object::SESSION.c_str(), BCON_INT32(_filter.sessionNum), "}",
                                        "{", mongo_fields::analytic::detected_object::LOGIC_TIME.c_str(), "{", "$gte", BCON_INT64(_filter.minLogicStep), "}", "}",
                                        "{", mongo_fields::analytic::detected_object::LOGIC_TIME.c_str(), "{", "$lte", BCON_INT64(_filter.maxLogicStep), "}", "}",
                                         "]"
                         );
     }
+    // whole area
     else{
         query = BCON_NEW( nullptr );
     }
@@ -313,7 +333,7 @@ std::vector<SPersistenceTrajectory> DatabaseManagerBase::readTrajectoryData( con
     return out;
 }
 
-void DatabaseManagerBase::removeTotalData( const SPersistenceSetFilter & _filter ){
+void DatabaseManagerBase::deleteTotalData( const SPersistenceSetFilter & _filter ){
 
     // TODO: remove by logic step range
 
@@ -322,9 +342,32 @@ void DatabaseManagerBase::removeTotalData( const SPersistenceSetFilter & _filter
 
     bson_t * query = BCON_NEW( nullptr );
 
-    const bool result = mongoc_collection_remove( contextTable, MONGOC_REMOVE_NONE, query, nullptr, nullptr );
+    bson_error_t error;
+    const bool result = mongoc_collection_remove( contextTable, MONGOC_REMOVE_NONE, query, nullptr, & error );
+    if( ! result ){
+        VS_LOG_ERROR << PRINT_HEADER << " total delete failed, reason: " << error.message << endl;
+    }
 
     bson_destroy( query );
+}
+
+void DatabaseManagerBase::deleteTotalData( const common_types::TContextId _ctxId ){
+
+    // get persistenceId of this contextId
+    const vector<SPersistenceMetadata> metadatas = getPersistenceSetMetadata( _ctxId );
+    for( const SPersistenceMetadata & meta : metadatas ){
+        for( const SPersistenceMetadataDSS & metaDSS : meta.persistenceFromDSS ){
+            deleteTotalData( SPersistenceSetFilter(metaDSS.persistenceSetId) );
+        }
+
+        for( const SPersistenceMetadataRaw & metaRaw : meta.persistenceFromRaw ){
+            deleteTotalData( SPersistenceSetFilter(metaRaw.persistenceSetId) );
+        }
+
+        for( const SPersistenceMetadataVideo & metaVideo : meta.persistenceFromVideo ){
+            deleteTotalData( SPersistenceSetFilter(metaVideo.persistenceSetId) );
+        }
+    }
 }
 
 bool DatabaseManagerBase::writeWeatherData( TPersistenceSetId _persId, const std::vector<SPersistenceWeather> & _data ){
@@ -350,19 +393,78 @@ std::vector<common_types::SPersistenceWeather> DatabaseManagerBase::readWeatherD
 // persistence write
 TPersistenceSetId DatabaseManagerBase::writePersistenceSetMetadata( const common_types::SPersistenceMetadataVideo & _videoMetadata ){
 
-    // TODO: implement me
+    const string payloadTableName = m_tableNamePrefix
+            + string("video_")
+            + getTableInfixNameByDataType(_videoMetadata.dataType) + string("_")
+            + string("sensor")
+            + std::to_string(_videoMetadata.recordedFromSensorId);
+
+    // update existing PersistenceId ( if it valid of course )
+    if( _videoMetadata.persistenceSetId != SPersistenceMetadataDescr::INVALID_PERSISTENCE_ID ){
+
+        if( isPersistenceMetadataValid(_videoMetadata.persistenceSetId, _videoMetadata) ){
+            writePersistenceMetadataGlobal( _videoMetadata.persistenceSetId, payloadTableName, _videoMetadata );
+            writePersistenceFromVideo( _videoMetadata );
+
+            return _videoMetadata.persistenceSetId;
+        }
+        else{
+            return SPersistenceMetadataDescr::INVALID_PERSISTENCE_ID;
+        }
+    }
+    // create new persistence record
+    else{
+        const TPersistenceSetId persId = createNewPersistenceId();
+
+        writePersistenceMetadataGlobal( persId, payloadTableName, _videoMetadata );
+        writePersistenceFromVideo( _videoMetadata );
+        createPayloadTableRef( persId, payloadTableName );
+
+        return persId;
+    }
 }
 
-TPersistenceSetId DatabaseManagerBase::writePersistenceSetMetadata( const common_types::SPersistenceMetadataDSS & _type ){
+TPersistenceSetId DatabaseManagerBase::writePersistenceSetMetadata( const common_types::SPersistenceMetadataDSS & _dssMetadata ){
 
-    // TODO: implement me
+    const string payloadTableName = m_tableNamePrefix
+            + string("dss_")
+            + getTableInfixNameByDataType(_dssMetadata.dataType) + string("_")
+            + string("ctx")
+            + std::to_string(_dssMetadata.contextId)
+            + string("_mission")
+            + std::to_string(_dssMetadata.missionId);
+            + (_dssMetadata.realData ? "_real" : "_simula");
+
+    // update existing PersistenceId ( if it valid of course )
+    if( _dssMetadata.persistenceSetId != SPersistenceMetadataDescr::INVALID_PERSISTENCE_ID ){
+
+        if( isPersistenceMetadataValid(_dssMetadata.persistenceSetId, _dssMetadata) ){
+            writePersistenceMetadataGlobal( _dssMetadata.persistenceSetId, payloadTableName, _dssMetadata );
+            writePersistenceFromDSS( _dssMetadata );
+
+            return _dssMetadata.persistenceSetId;
+        }
+        else{
+            return SPersistenceMetadataDescr::INVALID_PERSISTENCE_ID;
+        }
+    }
+    // create new persistence record
+    else{
+        const TPersistenceSetId persId = createNewPersistenceId();
+
+        writePersistenceMetadataGlobal( persId, payloadTableName, _dssMetadata );
+        writePersistenceFromDSS( _dssMetadata );
+        createPayloadTableRef( persId, payloadTableName );
+
+        return persId;
+    }
 }
 
 TPersistenceSetId DatabaseManagerBase::writePersistenceSetMetadata( const common_types::SPersistenceMetadataRaw & _rawMetadata ){
 
-    const string payloadTableName = string("hometest_")
+    const string payloadTableName = m_tableNamePrefix
             + string("raw_")
-            + string("traj_")
+            + getTableInfixNameByDataType(_rawMetadata.dataType) + string("_")
             + string("ctx")
             + std::to_string(_rawMetadata.contextId)
             + string("_mission")
@@ -416,15 +518,16 @@ void DatabaseManagerBase::writePersistenceMetadataGlobal( const common_types::TP
             mongo_fields::persistence_set_metadata::PAYLOAD_TABLE_NAME.c_str(), BCON_UTF8( _payloadTableName.c_str() ),
                             "}" );
 
-    const bool rt = mongoc_collection_update( m_tablePersistenceDescr,
+    bson_error_t error;
+    const bool rt = mongoc_collection_update( m_tablePersistenceMetadata,
                                   MONGOC_UPDATE_UPSERT,
                                   query,
                                   update,
                                   NULL,
-                                  NULL );
+                                  & error );
 
     if( ! rt ){
-        VS_LOG_ERROR << "global metadata write failed" << endl;
+        VS_LOG_ERROR << PRINT_HEADER << " global metadata write failed, reason: " << error.message << endl;
         bson_destroy( query );
         bson_destroy( update );
         return;
@@ -442,15 +545,16 @@ void DatabaseManagerBase::writePersistenceFromVideo( const common_types::SPersis
             mongo_fields::persistence_set_metadata_video::SENSOR_ID.c_str(), BCON_INT64( _videoMetadata.recordedFromSensorId ),
             "}" );
 
+    bson_error_t error;
     const bool rt = mongoc_collection_update( m_tablePersistenceFromVideo,
                                   MONGOC_UPDATE_UPSERT,
                                   query,
                                   update,
                                   NULL,
-                                  NULL );
+                                  & error );
 
     if( ! rt ){
-        VS_LOG_ERROR << "global metadata write failed" << endl;
+        VS_LOG_ERROR << PRINT_HEADER <<" video metadata write failed, reason: " << error.message << endl;
         bson_destroy( query );
         bson_destroy( update );
         return;
@@ -460,13 +564,36 @@ void DatabaseManagerBase::writePersistenceFromVideo( const common_types::SPersis
     bson_destroy( update );
 }
 
-void DatabaseManagerBase::writePersistenceFromDSS( const common_types::SPersistenceMetadataDSS & _type ){
+void DatabaseManagerBase::writePersistenceFromDSS( const common_types::SPersistenceMetadataDSS & _dssMetadata ){
 
+    bson_t * query = BCON_NEW( mongo_fields::persistence_set_metadata::PERSISTENCE_ID.c_str(), BCON_INT64( _dssMetadata.persistenceSetId ) );
+    bson_t * update = BCON_NEW( "$set", "{",
+            mongo_fields::persistence_set_metadata::PERSISTENCE_ID.c_str(), BCON_INT64( _dssMetadata.persistenceSetId ),
+            mongo_fields::persistence_set_metadata_dss::REAL.c_str(), BCON_BOOL( _dssMetadata.realData ),
+            "}" );
+
+    bson_error_t error;
+    const bool rt = mongoc_collection_update( m_tablePersistenceFromDSS,
+                                  MONGOC_UPDATE_UPSERT,
+                                  query,
+                                  update,
+                                  NULL,
+                                  & error );
+
+    if( ! rt ){
+        VS_LOG_ERROR << PRINT_HEADER <<" dss metadata write failed, reason: " << error.message << endl;
+        bson_destroy( query );
+        bson_destroy( update );
+        return;
+    }
+
+    bson_destroy( query );
+    bson_destroy( update );
 }
 
 void DatabaseManagerBase::writePersistenceFromRaw( const common_types::SPersistenceMetadataRaw & _type ){
 
-    // TODO: no raw metadata needed yet
+    // NOTE: no raw metadata needed yet
     return;
 }
 
@@ -498,7 +625,7 @@ std::vector<SPersistenceMetadata> DatabaseManagerBase::getPersistenceSetMetadata
         query = BCON_NEW( "$query", "{", mongo_fields::persistence_set_metadata::CTX_ID.c_str(), BCON_INT32( _ctxId ), "}" );
     }
 
-    mongoc_cursor_t * cursor = mongoc_collection_find( m_tablePersistenceDescr,
+    mongoc_cursor_t * cursor = mongoc_collection_find( m_tablePersistenceMetadata,
             MONGOC_QUERY_NONE,
             0,
             0,
@@ -595,7 +722,7 @@ common_types::SPersistenceMetadata DatabaseManagerBase::getPersistenceSetMetadat
 //                                                                 nullptr );
     bson_t * query = BCON_NEW( "$query", "{", mongo_fields::persistence_set_metadata::PERSISTENCE_ID.c_str(), BCON_INT32( _persId ), "}" );
 
-    mongoc_cursor_t * cursor = mongoc_collection_find( m_tablePersistenceDescr,
+    mongoc_cursor_t * cursor = mongoc_collection_find( m_tablePersistenceMetadata,
             MONGOC_QUERY_NONE,
             0,
             0,
@@ -634,8 +761,7 @@ common_types::SPersistenceMetadata DatabaseManagerBase::getPersistenceSetMetadat
         // only ONE of this types will be appear
         switch( persType ){
         case common_types::EPersistenceSourceType::VIDEO_SERVER : {
-
-
+            // TODO: do
             break;
         }
         case common_types::EPersistenceSourceType::AUTONOMOUS_RECORDER : {
@@ -657,7 +783,7 @@ common_types::SPersistenceMetadata DatabaseManagerBase::getPersistenceSetMetadat
             break;
         }
         case common_types::EPersistenceSourceType::DSS : {
-
+            // TODO: do
             break;
         }
         default : {
@@ -723,15 +849,81 @@ bool DatabaseManagerBase::getPersistenceFromRaw( common_types::TPersistenceSetId
     return true;
 }
 
-// persistence delete
-void DatabaseManagerBase::removePersistenceSetMetadata( common_types::TPersistenceSetId _id ){
 
-    // TODO: implement me
+// persistence delete
+void DatabaseManagerBase::deletePersistenceSetMetadata( common_types::TPersistenceSetId _id ){
+
+    // delete from 'spec table' and ...
+    const common_types::SPersistenceMetadata metadata = getPersistenceSetMetadata( _id );
+    if( ! metadata.persistenceFromDSS.empty() ){
+        deletePersistenceFromDSS( _id );
+    }
+    else if( ! metadata.persistenceFromRaw.empty() ){
+        deletePersistenceFromRaw( _id );
+    }
+    else if( ! metadata.persistenceFromVideo.empty() ){
+        deletePersistenceFromVideo( _id );
+    }
+    else{
+        VS_LOG_CRITICAL << PRINT_HEADER << " persistence id not found for deleting: " << _id << endl;
+        assert( false && "persistence id not found for deleting" );
+    }
+
+    // ... and from global 'metadata table'
+    bson_t * query = BCON_NEW( mongo_fields::persistence_set_metadata::PERSISTENCE_ID.c_str(), BCON_INT64(_id) );
+
+    bson_error_t error;
+    const bool result = mongoc_collection_remove( m_tablePersistenceMetadata, MONGOC_REMOVE_NONE, query, nullptr, & error );
+    if( ! result ){
+        VS_LOG_ERROR << PRINT_HEADER << " persistence id deleting failed, reason: " << error.message << endl;
+    }
+
+    bson_destroy( query );
 }
 
-void DatabaseManagerBase::removePersistenceSetMetadata( common_types::TContextId _ctxId ){
+void DatabaseManagerBase::deletePersistenceSetMetadata( common_types::TContextId _ctxId ){
 
-    // TODO: implement me
+    // delete all persId for this ctxId in 'spec tables'
+    const vector<SPersistenceMetadata> metadatas = getPersistenceSetMetadata( _ctxId );
+    for( const SPersistenceMetadata & meta : metadatas ){
+        for( const SPersistenceMetadataDSS & metaDSS : meta.persistenceFromDSS ){
+            deletePersistenceFromDSS( metaDSS.persistenceSetId );
+        }
+
+        for( const SPersistenceMetadataRaw & metaRaw : meta.persistenceFromRaw ){
+            deletePersistenceFromRaw( metaRaw.persistenceSetId );
+        }
+
+        for( const SPersistenceMetadataVideo & metaVideo : meta.persistenceFromVideo ){
+            deletePersistenceFromVideo( metaVideo.persistenceSetId );
+        }
+    }
+
+    // ... and from global 'metadata table'
+    bson_t * query = BCON_NEW( mongo_fields::persistence_set_metadata::CTX_ID.c_str(), BCON_INT32(_ctxId) );
+
+    bson_error_t error;
+    const bool result = mongoc_collection_remove( m_tablePersistenceMetadata, MONGOC_REMOVE_NONE, query, nullptr, & error );
+    if( ! result ){
+        VS_LOG_ERROR << PRINT_HEADER << " context id deleting failed, reason: " << error.message << endl;
+    }
+
+    bson_destroy( query );
+}
+
+void DatabaseManagerBase::deletePersistenceFromRaw( common_types::TPersistenceSetId _persId ){
+
+    // NOTE: there is no specific data for raw type yet
+}
+
+void DatabaseManagerBase::deletePersistenceFromDSS( common_types::TPersistenceSetId _persId ){
+
+    // TODO: delete real / simulate record
+}
+
+void DatabaseManagerBase::deletePersistenceFromVideo( common_types::TPersistenceSetId _persId ){
+
+    // TODO: delete sensor record
 }
 
 // persistence utils
@@ -755,11 +947,209 @@ common_types::TPersistenceSetId DatabaseManagerBase::createNewPersistenceId(){
     const vector<SPersistenceMetadata> metadatas = getPersistenceSetMetadata();
     if( ! metadatas.empty() ){
         TPersistenceSetId newId = SPersistenceMetadataDescr::INVALID_PERSISTENCE_ID;
+
+        // WTF?
+
         return newId;
     }
     else{
         const TPersistenceSetId newId = 1;
         return newId;
+    }
+}
+
+bool DatabaseManagerBase::insertSessionDescription( const TPersistenceSetId _persId, const SEventsSessionInfo & _descr ){
+
+    // make shure that session num not exist
+
+
+    // add session
+
+
+    return true;
+}
+
+bool DatabaseManagerBase::updateSessionDescription( const TPersistenceSetId _persId, const SEventsSessionInfo & _descr ){
+
+    // check that session num exist
+
+
+    // udpate steps
+
+
+    return true;
+}
+
+vector<SEventsSessionInfo> DatabaseManagerBase::selectSessionDescriptions( const TPersistenceSetId _persId ){
+
+
+
+
+}
+
+vector<SEventsSessionInfo> DatabaseManagerBase::scanPayloadForSessions( const TPersistenceSetId _persId,
+                                                                        const TSessionNum _beginFromSession ){
+
+    const string tableName = getTableName(_persId);
+    bson_t * cmd = BCON_NEW(    "distinct", BCON_UTF8( tableName.c_str() ),
+                                "key", BCON_UTF8( mongo_fields::analytic::detected_object::SESSION.c_str() )
+
+                                // TODO: what wrong with this shit ?
+//                                "sort", "{", "logic_time", BCON_INT32(-1), "}"
+//                                "query","{", "$sort", "{", "logic_time", BCON_INT32(-1), "}", "}"
+                            );
+
+    bson_t reply;
+    bson_error_t error;
+    const bool rt = mongoc_database_command_simple( m_mongoDatabase,
+                                                    cmd,
+                                                    NULL,
+                                                    & reply,
+                                                    & error );
+
+    if( 0 == rt ){
+        VS_LOG_ERROR << PRINT_HEADER << " get sessions failed, reason: " << error.message << endl;
+        bson_destroy( cmd );
+        return std::vector<SEventsSessionInfo>();
+    }
+
+    // fill array with session numbers
+    bson_iter_t iter;
+    bson_iter_t arrayIter;
+
+    if( ! (bson_iter_init_find( & iter, & reply, "values")
+            && BSON_ITER_HOLDS_ARRAY( & iter )
+            && bson_iter_recurse( & iter, & arrayIter ))
+      ){
+        VS_LOG_ERROR << PRINT_HEADER << "TODO: print" << endl;
+        return std::vector<SEventsSessionInfo>();
+    }
+
+    // get info about each session
+    std::vector<SEventsSessionInfo> out;
+
+    while( bson_iter_next( & arrayIter ) ){
+        if( BSON_ITER_HOLDS_INT32( & arrayIter ) ){
+            const TSessionNum sessionNumber = bson_iter_int32( & arrayIter );
+
+            const std::vector<SEventsSessionInfo> splittedSession = splitSessionByGaps( _persId, sessionNumber );
+            out.insert( out.end(), splittedSession.begin(), splittedSession.end() );
+        }
+    }
+
+    bson_destroy( cmd );
+    bson_destroy( & reply );
+    return out;
+}
+
+vector<SEventsSessionInfo> DatabaseManagerBase::splitSessionByGaps( const TPersistenceSetId _persId,
+                                                                    const TSessionNum _sessionNum,
+                                                                    const TLogicStep _logicStepThreshold ){
+
+    mongoc_collection_t * contextTable = getPayloadTableRef( _persId );
+    assert( contextTable );
+
+    bson_t * pipeline = BCON_NEW( "pipeline", "[",
+                                  "{", "$match", "{", "session", "{", "$eq", BCON_INT32(_sessionNum), "}", "}", "}",
+                                  "{", "$group", "{", "_id", "$logic_time", "maxAstroTime", "{", "$max", "$astro_time", "}", "}", "}",
+                                  "{", "$project", "{", "_id", BCON_INT32(1), "maxAstroTime", BCON_INT32(1), "}", "}",
+                                  "{", "$sort", "{", "_id", BCON_INT32(1), "}", "}",
+                                  "]"
+                                );
+
+    mongoc_cursor_t * cursor = mongoc_collection_aggregate( contextTable,
+                                                            MONGOC_QUERY_NONE,
+                                                            pipeline,
+                                                            nullptr,
+                                                            nullptr );
+    std::vector<SEventsSessionInfo> out;
+
+    SEventsSessionInfo session;
+    bool sessionOpened = false;
+    int64_t previousStep = 0;
+
+    const bson_t * doc;
+    while( mongoc_cursor_next( cursor, & doc ) ){
+        bson_iter_t iter;
+
+        bson_iter_init_find( & iter, doc, "_id" );
+        const TLogicStep logicStep = bson_iter_int64( & iter );
+
+        // continue
+        if( sessionOpened ){
+            // OK
+            if( logicStep == (previousStep + 1)  ){
+                previousStep = logicStep;
+                continue;
+            }
+            // gap is catched
+            else{
+                session.maxLogicStep = logicStep;
+                bson_iter_init_find( & iter, doc, "maxAstroTime" );
+                session.maxTimestampMillisec = bson_iter_int64( & iter );
+                session.number = _sessionNum;
+                out.push_back( session );
+
+                session.clear();
+
+                sessionOpened = false;
+                previousStep = logicStep;
+            }
+        }
+        // open
+        else{
+            session.minLogicStep = logicStep;
+            previousStep = logicStep;
+
+            bson_iter_init_find( & iter, doc, "maxAstroTime" );
+            session.minTimestampMillisec = bson_iter_int64( & iter );
+        }
+    }
+
+    bson_destroy( pipeline );
+    mongoc_cursor_destroy( cursor );
+
+    return out;
+}
+
+void DatabaseManagerBase::deleteSessionDescription( const common_types::TPersistenceSetId _persId, const TSessionNum _sessionNum ){
+
+    bson_t * query = nullptr;
+    if( common_vars::ALL_SESSION_NUM == _sessionNum ){
+        query = BCON_NEW( mongo_fields::persistence_set_description::PERSISTENCE_ID.c_str(), BCON_INT64(_persId) );
+    }
+    else{
+        query = BCON_NEW( "$and", "[", "{", mongo_fields::persistence_set_description::PERSISTENCE_ID.c_str(), BCON_INT64(_persId), "}",
+                                       "{", mongo_fields::persistence_set_description::SESSION_NUM.c_str(), "{", "$eq", BCON_INT32(_sessionNum), "}", "}",
+                                  "]"
+                        );
+    }
+
+    bson_error_t error;
+    const bool result = mongoc_collection_remove( m_tablePersistenceDescription, MONGOC_REMOVE_NONE, query, nullptr, & error );
+    if( ! result ){
+        VS_LOG_ERROR << PRINT_HEADER << " delete session descr failed, reason: " << error.message << endl;
+    }
+
+    bson_destroy( query );
+}
+
+void DatabaseManagerBase::deleteSessionDescription( const common_types::TContextId _ctxId ){
+
+    // get persistenceId of this contextId
+    const vector<SPersistenceMetadata> metadatas = getPersistenceSetMetadata( _ctxId );
+    for( const SPersistenceMetadata & meta : metadatas ){
+        for( const SPersistenceMetadataDSS & metaDSS : meta.persistenceFromDSS ){
+            deleteSessionDescription( metaDSS.persistenceSetId );
+        }
+
+        for( const SPersistenceMetadataRaw & metaRaw : meta.persistenceFromRaw ){
+            deleteSessionDescription( metaRaw.persistenceSetId );
+        }
+
+        for( const SPersistenceMetadataVideo & metaVideo : meta.persistenceFromVideo ){
+            deleteSessionDescription( metaVideo.persistenceSetId );
+        }
     }
 }
 
@@ -776,7 +1166,7 @@ std::vector<SEventsSessionInfo> DatabaseManagerBase::getPersistenceSetSessions( 
 
     bson_t reply;
     bson_error_t error;
-    const bool rt = mongoc_database_command_simple( m_database,
+    const bool rt = mongoc_database_command_simple( m_mongoDatabase,
                                                     cmd,
                                                     NULL,
                                                     & reply,
@@ -881,15 +1271,16 @@ bool DatabaseManagerBase::writeClientOperation( const common_types::SWALClientOp
                              mongo_fields::wal_client_operations::FULL_TEXT.c_str(), BCON_UTF8( _operation.commandFullText.c_str() ),
                             "}" );
 
+    bson_error_t error;
     const bool rt = mongoc_collection_update( m_tableWALClientOperations,
                                   MONGOC_UPDATE_UPSERT,
                                   query,
                                   update,
                                   NULL,
-                                  NULL );
+                                  & error );
 
     if( ! rt ){
-        VS_LOG_ERROR << "client operation write failed" << endl;
+        VS_LOG_ERROR << PRINT_HEADER << " client operation write failed, reason: " << error.message << endl;
         bson_destroy( query );
         bson_destroy( update );
         return false;

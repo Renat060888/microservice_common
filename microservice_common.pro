@@ -20,6 +20,7 @@ DEFINES += \
     SWITCH_LOGGER_SIMPLE \
 #    SWITCH_LOGGER_ASTRA \
 #    OBJREPR_LIBRARY_EXIST \
+    UNIT_TESTS_GOOGLE \
 
 INCLUDEPATH += \
     /usr/include/libgtop-2.0 \
@@ -34,7 +35,6 @@ LIBS += \
     -lrabbitmq \
     -lnvidia-ml \
     -lgtop-2.0 \
-#    -lgtest \
     -lboost_filesystem \
     -lboost_program_options \
 
@@ -43,6 +43,12 @@ contains( DEFINES, OBJREPR_LIBRARY_EXIST ){
 LIBS += \    
     -lunilog \
     -lobjrepr
+}
+
+contains( DEFINES, UNIT_TESTS_GOOGLE ){
+    message("connect 'gtests' library")
+LIBS += \
+    -lgtest
 }
 
 SOURCES += \
@@ -81,7 +87,8 @@ SOURCES += \
         system/threaded_multitask_service.cpp \
         system/wal.cpp \
         unit_tests/communication_tests.cpp \
-    unit_tests/storage_tests.cpp \
+        unit_tests/database_manager_base_test.cpp \
+        unit_tests/storage_tests.cpp \
         unit_tests/system_tests.cpp \
     system/system_environment_facade.cpp \
     communication/network_splitter.cpp
@@ -130,6 +137,7 @@ HEADERS += \
     system/threaded_multitask_service.h \
     system/wal.h \
     unit_tests/communication_tests.h \
+    unit_tests/database_manager_base_test.h \
     unit_tests/storage_tests.h \
     unit_tests/system_tests.h \
     analyze/dummy.h \
