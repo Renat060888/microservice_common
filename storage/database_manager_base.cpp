@@ -960,31 +960,183 @@ common_types::TPersistenceSetId DatabaseManagerBase::createNewPersistenceId(){
 
 bool DatabaseManagerBase::insertSessionDescription( const TPersistenceSetId _persId, const SEventsSessionInfo & _descr ){
 
-    // make shure that session num not exist
+    // ----------------------------------------------------------------------------------------------
+    // make shure that session num is not exist
+    // ----------------------------------------------------------------------------------------------
+    if( isSessionExistInDescription(_descr.number) ){
+        VS_LOG_ERROR << PRINT_HEADER << " insert description failed, such session num [" << _descr.number << "] ALREADY exist" << endl;
+        return false;
+    }
 
-
+    // ----------------------------------------------------------------------------------------------
     // add session
+    // ----------------------------------------------------------------------------------------------
+    bson_t * doc = BCON_NEW( mongo_fields::persistence_set_description::PERSISTENCE_ID.c_str(), BCON_INT64( _persId),
+                             mongo_fields::persistence_set_description::SESSION_NUM.c_str(), BCON_INT32( _descr.number ),
+                             mongo_fields::persistence_set_description::LOGIC_TIME_MIN.c_str(), BCON_INT64( _descr.minLogicStep ),
+                             mongo_fields::persistence_set_description::LOGIC_TIME_MAX.c_str(), BCON_INT64( _descr.maxLogicStep ),
+                             mongo_fields::persistence_set_description::ASTRO_TIME_MIN.c_str(), BCON_INT64( _descr.minTimestampMillisec ),
+                             mongo_fields::persistence_set_description::ASTRO_TIME_MAX.c_str(), BCON_INT64( _descr.maxTimestampMillisec ),
+                             mongo_fields::persistence_set_description::EMPTY_STEPS_BEGIN.c_str(), BCON_INT32( 0 ),
+                             mongo_fields::persistence_set_description::EMPTY_STEPS_END.c_str(), BCON_INT32( 0 )
+                           );
 
+    bson_error_t error;
+    const bool rt = mongoc_collection_insert( m_tablePersistenceDescription,
+                                              MONGOC_INSERT_NONE,
+                                              doc,
+                                              NULL,
+                                              & error );
 
+    if( 0 == rt ){
+        VS_LOG_ERROR << PRINT_HEADER << " session description insert failed, reason: " << error.message << endl;
+        bson_destroy( doc );
+        return false;
+    }
+
+    bson_destroy( doc );
     return true;
 }
 
 bool DatabaseManagerBase::updateSessionDescription( const TPersistenceSetId _persId, const SEventsSessionInfo & _descr ){
 
+    // ----------------------------------------------------------------------------------------------
     // check that session num exist
+    // ----------------------------------------------------------------------------------------------
+    if( ! isSessionExistInDescription(_descr.number) ){
+        VS_LOG_ERROR << PRINT_HEADER << " ipdate description failed, such session num [" << _descr.number << "] is NOT exist" << endl;
+        return false;
+    }
 
-
+    // ----------------------------------------------------------------------------------------------
     // udpate steps
+    // ----------------------------------------------------------------------------------------------
+    bson_t * query = BCON_NEW( mongo_fields::persistence_set_description::SESSION_NUM.c_str(), BCON_INT32( _descr.number ) );
+    bson_t * update = BCON_NEW( "$set", "{",
+                                mongo_fields::persistence_set_description::PERSISTENCE_ID.c_str(), BCON_INT64( _persId ),
+                                mongo_fields::persistence_set_description::SESSION_NUM.c_str(), BCON_INT32( _descr.number ),
+                                mongo_fields::persistence_set_description::LOGIC_TIME_MIN.c_str(), BCON_INT64( _descr.minLogicStep ),
+                                mongo_fields::persistence_set_description::LOGIC_TIME_MAX.c_str(), BCON_INT64( _descr.maxLogicStep ),
+                                mongo_fields::persistence_set_description::ASTRO_TIME_MIN.c_str(), BCON_INT64( _descr.minTimestampMillisec ),
+                                mongo_fields::persistence_set_description::ASTRO_TIME_MAX.c_str(), BCON_INT64( _descr.maxTimestampMillisec ),
+                                mongo_fields::persistence_set_description::EMPTY_STEPS_BEGIN.c_str(), BCON_INT32( 0 ),
+                                mongo_fields::persistence_set_description::ASTRO_TIME_MIN.c_str(), BCON_INT32( 0 ),
+                              "}" );
 
+    bson_error_t error;
+    const bool rt = mongoc_collection_update( m_tablePersistenceDescription,
+                                  MONGOC_UPDATE_NONE,
+                                  query,
+                                  update,
+                                  NULL,
+                                  & error );
 
+    if( ! rt ){
+        VS_LOG_ERROR << PRINT_HEADER << " update session description failed, reason: " << error.message << endl;
+        bson_destroy( query );
+        bson_destroy( update );
+        return false;
+    }
+
+    bson_destroy( query );
+    bson_destroy( update );
     return true;
 }
 
 vector<SEventsSessionInfo> DatabaseManagerBase::selectSessionDescriptions( const TPersistenceSetId _persId ){
 
+    bson_t * query = BCON_NEW( mongo_fields::persistence_set_description::PERSISTENCE_ID.c_str(), BCON_INT64( _persId ));
 
+    mongoc_cursor_t * cursor = mongoc_collection_find(  m_tablePersistenceDescription,
+                                                        MONGOC_QUERY_NONE,
+                                                        0,
+                                                        0,
+                                                        1000000, // 10000 ~= inf
+                                                        query,
+                                                        nullptr,
+                                                        nullptr );
 
+    std::vector<SEventsSessionInfo> out;
+    const bson_t * doc;
+    while( mongoc_cursor_next( cursor, & doc ) ){
+        bson_iter_t iter;
 
+        SEventsSessionInfo info;
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_description::SESSION_NUM.c_str() );
+        info.number = bson_iter_int32( & iter );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_description::LOGIC_TIME_MIN.c_str() );
+        info.minLogicStep = bson_iter_int64( & iter );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_description::LOGIC_TIME_MAX.c_str() );
+        info.maxLogicStep = bson_iter_int64( & iter );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_description::ASTRO_TIME_MIN.c_str() );
+        info.minTimestampMillisec = bson_iter_int64( & iter );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_description::ASTRO_TIME_MAX.c_str() );
+        info.maxTimestampMillisec = bson_iter_int64( & iter );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_description::EMPTY_STEPS_BEGIN.c_str() );
+        info.emptyStepsBegin = bson_iter_int32( & iter );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_description::EMPTY_STEPS_END.c_str() );
+        info.emptyStepsEnd = bson_iter_int32( & iter );
+
+        out.push_back( info );
+    }
+
+    mongoc_cursor_destroy( cursor );
+    bson_destroy( query );
+
+    return out;
+}
+
+vector<SEventsSessionInfo> DatabaseManagerBase::scanPayloadForSessions2( const TPersistenceSetId _persId,
+                                                                        const TSessionNum _beginFromSession ){
+
+    const string tableName = getTableName(_persId);
+    bson_t * cmd = BCON_NEW(    "distinct", BCON_UTF8( tableName.c_str() ),
+                                "key", BCON_UTF8( mongo_fields::analytic::detected_object::SESSION.c_str() )
+                            );
+
+    bson_t reply;
+    bson_error_t error;
+    const bool rt = mongoc_database_command_simple( m_mongoDatabase,
+                                                    cmd,
+                                                    NULL,
+                                                    & reply,
+                                                    & error );
+
+    if( 0 == rt ){
+        VS_LOG_ERROR << PRINT_HEADER << " get sessions failed, reason: " << error.message << endl;
+        bson_destroy( cmd );
+        return std::vector<SEventsSessionInfo>();
+    }
+
+    // fill array with session numbers
+    bson_iter_t iter;
+    bson_iter_t arrayIter;
+
+    if( ! (bson_iter_init_find( & iter, & reply, "values")
+            && BSON_ITER_HOLDS_ARRAY( & iter )
+            && bson_iter_recurse( & iter, & arrayIter ))
+      ){
+        VS_LOG_ERROR << PRINT_HEADER << "TODO: print" << endl;
+        return std::vector<SEventsSessionInfo>();
+    }
+
+    // get info about each session
+    std::vector<SEventsSessionInfo> out;
+
+    while( bson_iter_next( & arrayIter ) ){
+        if( BSON_ITER_HOLDS_INT32( & arrayIter ) ){
+            const TSessionNum sessionNumber = bson_iter_int32( & arrayIter );
+
+            if( sessionNumber >= _beginFromSession ){
+                const SEventsSessionInfo info = getSessionInfo( _persId, sessionNumber );
+                out.push_back( info );
+            }
+        }
+    }
+
+    bson_destroy( cmd );
+    bson_destroy( & reply );
+    return out;
 }
 
 vector<SEventsSessionInfo> DatabaseManagerBase::scanPayloadForSessions( const TPersistenceSetId _persId,
@@ -1039,6 +1191,76 @@ vector<SEventsSessionInfo> DatabaseManagerBase::scanPayloadForSessions( const TP
 
     bson_destroy( cmd );
     bson_destroy( & reply );
+    return out;
+}
+
+SEventsSessionInfo DatabaseManagerBase::getSessionInfo( const common_types::TPersistenceSetId _persId,
+        const common_types::TSessionNum _sessionNum ){
+
+    mongoc_collection_t * contextTable = getPayloadTableRef( _persId );
+    assert( contextTable );
+
+    SEventsSessionInfo out;
+    out.number = _sessionNum;
+
+    // get MIN value
+    {
+        bson_t * pipeline = BCON_NEW( "pipeline", "[",
+                                      "{", "$match", "{", "session", "{", "$eq", BCON_INT32(_sessionNum), "}", "}", "}",
+                                      "{", "$group", "{", "_id", "$logic_time", "maxAstroTime", "{", "$max", "$astro_time", "}", "}", "}",
+                                      "{", "$project", "{", "_id", BCON_INT32(1), "maxAstroTime", BCON_INT32(1), "}", "}",
+                                      "{", "$sort", "{", "_id", BCON_INT32(-1), "}", "}",
+                                      "]"
+                                    );
+
+        mongoc_cursor_t * cursor = mongoc_collection_aggregate( contextTable,
+                                                                MONGOC_QUERY_NONE,
+                                                                pipeline,
+                                                                nullptr,
+                                                                nullptr );
+        const bson_t * doc;
+        while( mongoc_cursor_next( cursor, & doc ) ){
+            bson_iter_t iter;
+
+            bson_iter_init_find( & iter, doc, "_id" );
+            out.minLogicStep = bson_iter_int64( & iter );
+            bson_iter_init_find( & iter, doc, "maxAstroTime" );
+            out.minTimestampMillisec = bson_iter_int64( & iter );
+        }
+
+        bson_destroy( pipeline );
+        mongoc_cursor_destroy( cursor );
+    }
+
+    // get MAX value
+    {
+        bson_t * pipeline = BCON_NEW( "pipeline", "[",
+                                      "{", "$match", "{", "session", "{", "$eq", BCON_INT32(_sessionNum), "}", "}", "}",
+                                      "{", "$group", "{", "_id", "$logic_time", "maxAstroTime", "{", "$max", "$astro_time", "}", "}", "}",
+                                      "{", "$project", "{", "_id", BCON_INT32(1), "maxAstroTime", BCON_INT32(1), "}", "}",
+                                      "{", "$sort", "{", "_id", BCON_INT32(1), "}", "}",
+                                      "]"
+                                    );
+
+        mongoc_cursor_t * cursor = mongoc_collection_aggregate( contextTable,
+                                                                MONGOC_QUERY_NONE,
+                                                                pipeline,
+                                                                nullptr,
+                                                                nullptr );
+        const bson_t * doc;
+        while( mongoc_cursor_next( cursor, & doc ) ){
+            bson_iter_t iter;
+
+            bson_iter_init_find( & iter, doc, "_id" );
+            out.maxLogicStep = bson_iter_int64( & iter );
+            bson_iter_init_find( & iter, doc, "maxAstroTime" );
+            out.maxTimestampMillisec = bson_iter_int64( & iter );
+        }
+
+        bson_destroy( pipeline );
+        mongoc_cursor_destroy( cursor );
+    }
+
     return out;
 }
 
@@ -1110,6 +1332,22 @@ vector<SEventsSessionInfo> DatabaseManagerBase::splitSessionByGaps( const TPersi
     mongoc_cursor_destroy( cursor );
 
     return out;
+}
+
+bool DatabaseManagerBase::isSessionExistInDescription( const common_types::TSessionNum _sessionNum ){
+
+    bson_t * query = BCON_NEW( mongo_fields::persistence_set_description::SESSION_NUM, BCON_INT32( _sessionNum ) );
+
+    mongoc_cursor_t * cursor = mongoc_collection_find(  m_tablePersistenceDescription,
+                                                        MONGOC_QUERY_NONE,
+                                                        0,
+                                                        0,
+                                                        1000000, // 10000 ~= inf
+                                                        query,
+                                                        nullptr,
+                                                        nullptr );
+
+    return mongoc_cursor_more( cursor );
 }
 
 void DatabaseManagerBase::deleteSessionDescription( const common_types::TPersistenceSetId _persId, const TSessionNum _sessionNum ){

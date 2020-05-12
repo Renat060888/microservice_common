@@ -62,6 +62,8 @@ public:
     std::vector<common_types::SEventsSessionInfo> selectSessionDescriptions( const common_types::TPersistenceSetId _persId );
     std::vector<common_types::SEventsSessionInfo> scanPayloadForSessions( const common_types::TPersistenceSetId _persId,
                                                                           const common_types::TSessionNum _beginFromSession = 0 );
+    std::vector<common_types::SEventsSessionInfo> scanPayloadForSessions2( const common_types::TPersistenceSetId _persId,
+                                                                           const common_types::TSessionNum _beginFromSession = 0 );
     void deleteSessionDescription( const common_types::TPersistenceSetId _persId, const common_types::TSessionNum _sessionNum = common_vars::ALL_SESSION_NUM );
     void deleteSessionDescription( const common_types::TContextId _ctxId );
 
@@ -111,6 +113,9 @@ private:
     void deletePersistenceFromVideo( common_types::TPersistenceSetId _persId );
 
     // object payload - description
+    bool isSessionExistInDescription( const common_types::TSessionNum _sessionNum );
+    common_types::SEventsSessionInfo getSessionInfo( const common_types::TPersistenceSetId _persId,
+            const common_types::TSessionNum _sessionNum );
     std::vector<common_types::SEventsSessionInfo> splitSessionByGaps( const common_types::TPersistenceSetId _persId,
                                                                       const common_types::TSessionNum _sessionNum,
                                                                       const common_types::TLogicStep _logicStepThreshold = 0 );
