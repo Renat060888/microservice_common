@@ -24,6 +24,24 @@ struct FEqualSPersistenceTrajectory {
         return ( _lhs.sessionNum == _rhs.sessionNum );
     }
 };
+
+struct FEqualSEventsSessionInfo {
+    FEqualSEventsSessionInfo( TSessionNum _number )
+        : number(_number)
+    {}
+
+    bool operator()( const SEventsSessionInfo & _rhs ) const {
+        return ( this->number == _rhs.number );
+    }
+
+    TSessionNum number;
+};
+
+struct FLessSEventsSessionInfo {
+    bool operator()( const SEventsSessionInfo & _lhs, const SEventsSessionInfo & _rhs ) const {
+        return ( _lhs.number < _rhs.number );
+    }
+};
 // functors <
 
 TestDatabaseManagerBase::TestDatabaseManagerBase()
@@ -51,7 +69,7 @@ void TestDatabaseManagerBase::TearDownTestCase(){
 // -------------------------------------------------------------------------
 // object trajectory tests
 // -------------------------------------------------------------------------
-TEST_F(TestDatabaseManagerBase, DISABLED_metadata_test_recorder){
+TEST_F(TestDatabaseManagerBase, metadata_test_recorder){
 
     // I check for correct clearing
     {
@@ -63,13 +81,14 @@ TEST_F(TestDatabaseManagerBase, DISABLED_metadata_test_recorder){
         ASSERT_TRUE( ctxPersistenceMetadatas1.empty() );
     }
 
-    // II check for correct writing
+    // II check for correct writing / reading
     {
         SPersistenceMetadataRaw rawMetadataInput;
         rawMetadataInput.contextId = CONTEXT_ID;
         rawMetadataInput.missionId = MISSION_ID;
         rawMetadataInput.lastRecordedSession = 1;
         rawMetadataInput.sourceType = common_types::EPersistenceSourceType::AUTONOMOUS_RECORDER;
+        rawMetadataInput.dataType = EPersistenceDataType::TRAJECTORY;
         rawMetadataInput.timeStepIntervalMillisec = QUANTUM_INTERVAL_MILLISEC;
 
         const TPersistenceSetId persId = m_database->writePersistenceSetMetadata( rawMetadataInput );
@@ -83,13 +102,10 @@ TEST_F(TestDatabaseManagerBase, DISABLED_metadata_test_recorder){
         ASSERT_EQ( rawMetadataInput, rawMetadataOutput );
     }
 
-    // III check for correct reading
+    // III check for correct updating
     {
-
+        // TODO: do
     }
-
-    // IV check for correct updating
-    // TODO: do
 }
 
 TEST_F(TestDatabaseManagerBase, payload_test_recorder){
@@ -107,6 +123,7 @@ TEST_F(TestDatabaseManagerBase, payload_test_recorder){
         rawMetadataInput.missionId = MISSION_ID;
         rawMetadataInput.lastRecordedSession = 1;
         rawMetadataInput.sourceType = common_types::EPersistenceSourceType::AUTONOMOUS_RECORDER;
+        rawMetadataInput.dataType = EPersistenceDataType::TRAJECTORY;
         rawMetadataInput.timeStepIntervalMillisec = QUANTUM_INTERVAL_MILLISEC;
 
         persId = m_database->writePersistenceSetMetadata( rawMetadataInput );
@@ -115,8 +132,9 @@ TEST_F(TestDatabaseManagerBase, payload_test_recorder){
     }
 
     // II write payload
+    // TODO: combine with duplicate in TestDatasourceReader ( in order to avoid redundance )
+    vector<common_types::SPersistenceTrajectory> dataToWrite;
     {
-        vector<common_types::SPersistenceTrajectory> data;
         SPersistenceTrajectory trajInput;
         trajInput.ctxId = CONTEXT_ID;
         trajInput.missionId = MISSION_ID;
@@ -139,7 +157,7 @@ TEST_F(TestDatabaseManagerBase, payload_test_recorder){
             trajInput.latDeg += 0.1f;
             trajInput.lonDeg += 0.2f;
             trajInput.astroTimeMillisec += 1000;
-            data.push_back( trajInput );
+            dataToWrite.push_back( trajInput );
         }
 
         // S2
@@ -152,7 +170,7 @@ TEST_F(TestDatabaseManagerBase, payload_test_recorder){
             trajInput.latDeg += 0.1f;
             trajInput.lonDeg += 0.2f;
             trajInput.astroTimeMillisec += 1000;
-            data.push_back( trajInput );
+            dataToWrite.push_back( trajInput );
         }
 
         // S3
@@ -165,7 +183,7 @@ TEST_F(TestDatabaseManagerBase, payload_test_recorder){
             trajInput.latDeg += 0.1f;
             trajInput.lonDeg += 0.2f;
             trajInput.astroTimeMillisec += 1000;
-            data.push_back( trajInput );
+            dataToWrite.push_back( trajInput );
         }
 
         // S4
@@ -178,7 +196,7 @@ TEST_F(TestDatabaseManagerBase, payload_test_recorder){
             trajInput.latDeg += 0.1f;
             trajInput.lonDeg += 0.2f;
             trajInput.astroTimeMillisec += 1000;
-            data.push_back( trajInput );
+            dataToWrite.push_back( trajInput );
         }
 
         // S5
@@ -191,17 +209,18 @@ TEST_F(TestDatabaseManagerBase, payload_test_recorder){
             trajInput.latDeg += 0.1f;
             trajInput.lonDeg += 0.2f;
             trajInput.astroTimeMillisec += 1000;
-            data.push_back( trajInput );
+            dataToWrite.push_back( trajInput );
         }
 
-        m_database->writeTrajectoryData( persId, data );
+        ASSERT_TRUE( m_database->writeTrajectoryData( persId, dataToWrite ) );
     }
 
     // III check written payload ( whole area request )
+    std::vector<SPersistenceTrajectory> dataToRead;
     {
         SPersistenceSetFilter filter(persId);
         filter.minLogicStep = common_vars::ALL_LOGIC_STEPS;
-        const std::vector<SPersistenceTrajectory> trajOutput = m_database->readTrajectoryData( filter );
+        dataToRead = m_database->readTrajectoryData( filter );
 
         SPersistenceTrajectory trajStandart;
         trajStandart.ctxId = CONTEXT_ID;
@@ -218,11 +237,11 @@ TEST_F(TestDatabaseManagerBase, payload_test_recorder){
 
         for( int i = 0; i < 15; i++ ){
             trajStandart.astroTimeMillisec += 1000;
-            ASSERT_EQ( trajOutput[ i ].logicTime, ++trajStandart.logicTime );
-            ASSERT_EQ( trajOutput[ i ].astroTimeMillisec, trajStandart.astroTimeMillisec );
-            ASSERT_EQ( trajOutput[ i ].sessionNum, trajStandart.sessionNum );
-            ASSERT_EQ( trajOutput[ i ].objId, trajStandart.objId );
-            ASSERT_EQ( trajOutput[ i ].state, trajStandart.state );
+            ASSERT_EQ( dataToRead[ i ].logicTime, ++trajStandart.logicTime );
+            ASSERT_EQ( dataToRead[ i ].astroTimeMillisec, trajStandart.astroTimeMillisec );
+            ASSERT_EQ( dataToRead[ i ].sessionNum, trajStandart.sessionNum );
+            ASSERT_EQ( dataToRead[ i ].objId, trajStandart.objId );
+            ASSERT_EQ( dataToRead[ i ].state, trajStandart.state );
         }
 
         // S2
@@ -232,11 +251,11 @@ TEST_F(TestDatabaseManagerBase, payload_test_recorder){
 
         for( int i = 15; i < 25; i++ ){
             trajStandart.astroTimeMillisec += 1000;
-            ASSERT_EQ( trajOutput[ i ].logicTime, ++trajStandart.logicTime );
-            ASSERT_EQ( trajOutput[ i ].astroTimeMillisec, trajStandart.astroTimeMillisec );
-            ASSERT_EQ( trajOutput[ i ].sessionNum, trajStandart.sessionNum );
-            ASSERT_EQ( trajOutput[ i ].objId, trajStandart.objId );
-            ASSERT_EQ( trajOutput[ i ].state, trajStandart.state );
+            ASSERT_EQ( dataToRead[ i ].logicTime, ++trajStandart.logicTime );
+            ASSERT_EQ( dataToRead[ i ].astroTimeMillisec, trajStandart.astroTimeMillisec );
+            ASSERT_EQ( dataToRead[ i ].sessionNum, trajStandart.sessionNum );
+            ASSERT_EQ( dataToRead[ i ].objId, trajStandart.objId );
+            ASSERT_EQ( dataToRead[ i ].state, trajStandart.state );
         }
 
         // S3
@@ -246,11 +265,11 @@ TEST_F(TestDatabaseManagerBase, payload_test_recorder){
 
         for( int i = 25; i < 29; i++ ){
             trajStandart.astroTimeMillisec += 1000;
-            ASSERT_EQ( trajOutput[ i ].logicTime, ++trajStandart.logicTime );
-            ASSERT_EQ( trajOutput[ i ].astroTimeMillisec, trajStandart.astroTimeMillisec );
-            ASSERT_EQ( trajOutput[ i ].sessionNum, trajStandart.sessionNum );
-            ASSERT_EQ( trajOutput[ i ].objId, trajStandart.objId );
-            ASSERT_EQ( trajOutput[ i ].state, trajStandart.state );
+            ASSERT_EQ( dataToRead[ i ].logicTime, ++trajStandart.logicTime );
+            ASSERT_EQ( dataToRead[ i ].astroTimeMillisec, trajStandart.astroTimeMillisec );
+            ASSERT_EQ( dataToRead[ i ].sessionNum, trajStandart.sessionNum );
+            ASSERT_EQ( dataToRead[ i ].objId, trajStandart.objId );
+            ASSERT_EQ( dataToRead[ i ].state, trajStandart.state );
         }
 
         // S4
@@ -260,11 +279,11 @@ TEST_F(TestDatabaseManagerBase, payload_test_recorder){
 
         for( int i = 29; i < 32; i++ ){
             trajStandart.astroTimeMillisec += 1000;
-            ASSERT_EQ( trajOutput[ i ].logicTime, ++trajStandart.logicTime );
-            ASSERT_EQ( trajOutput[ i ].astroTimeMillisec, trajStandart.astroTimeMillisec );
-            ASSERT_EQ( trajOutput[ i ].sessionNum, trajStandart.sessionNum );
-            ASSERT_EQ( trajOutput[ i ].objId, trajStandart.objId );
-            ASSERT_EQ( trajOutput[ i ].state, trajStandart.state );
+            ASSERT_EQ( dataToRead[ i ].logicTime, ++trajStandart.logicTime );
+            ASSERT_EQ( dataToRead[ i ].astroTimeMillisec, trajStandart.astroTimeMillisec );
+            ASSERT_EQ( dataToRead[ i ].sessionNum, trajStandart.sessionNum );
+            ASSERT_EQ( dataToRead[ i ].objId, trajStandart.objId );
+            ASSERT_EQ( dataToRead[ i ].state, trajStandart.state );
         }
 
         // S5
@@ -274,12 +293,47 @@ TEST_F(TestDatabaseManagerBase, payload_test_recorder){
 
         for( int i = 32; i < 35; i++ ){
             trajStandart.astroTimeMillisec += 1000;
-            ASSERT_EQ( trajOutput[ i ].logicTime, ++trajStandart.logicTime );
-            ASSERT_EQ( trajOutput[ i ].astroTimeMillisec, trajStandart.astroTimeMillisec );
-            ASSERT_EQ( trajOutput[ i ].sessionNum, trajStandart.sessionNum );
-            ASSERT_EQ( trajOutput[ i ].objId, trajStandart.objId );
-            ASSERT_EQ( trajOutput[ i ].state, trajStandart.state );
+            ASSERT_EQ( dataToRead[ i ].logicTime, ++trajStandart.logicTime );
+            ASSERT_EQ( dataToRead[ i ].astroTimeMillisec, trajStandart.astroTimeMillisec );
+            ASSERT_EQ( dataToRead[ i ].sessionNum, trajStandart.sessionNum );
+            ASSERT_EQ( dataToRead[ i ].objId, trajStandart.objId );
+            ASSERT_EQ( dataToRead[ i ].state, trajStandart.state );
         }
+    }
+
+    // data count equality
+    ASSERT_EQ( dataToWrite.size(), dataToRead.size() );
+}
+
+void checkDescriptionWithPayload( DatabaseManagerBase * db, const TPersistenceSetId _persistenceSetId, const vector<SEventsSessionInfo> & _storedSessionInfo ){
+
+    SPersistenceSetFilter filter(_persistenceSetId);
+    filter.minLogicStep = common_vars::ALL_LOGIC_STEPS;
+    const std::vector<SPersistenceTrajectory> trajOutput = db->readTrajectoryData( filter );
+
+    // 1 count sessions
+    std::vector<SPersistenceTrajectory> trajOutputCopy = trajOutput;
+    std::sort( trajOutputCopy.begin(), trajOutputCopy.end(), FLessSPersistenceTrajectory() );
+    auto iter = std::unique( trajOutputCopy.begin(), trajOutputCopy.end(), FEqualSPersistenceTrajectory() );
+    trajOutputCopy.erase( iter, trajOutputCopy.end() );
+
+    const int payloadSessionCount = trajOutputCopy.size();
+    ASSERT_EQ( payloadSessionCount, _storedSessionInfo.size() );
+
+    // 2 check session by session
+    for( const SPersistenceTrajectory & traj : trajOutput ){
+
+        // session valid number
+        auto iterStoredSessionInfo = std::find_if( _storedSessionInfo.begin(), _storedSessionInfo.end(), FEqualSEventsSessionInfo(traj.sessionNum) );
+        ASSERT_NE( iterStoredSessionInfo, _storedSessionInfo.end() );
+
+        // logic / astro step in valid range
+        const SEventsSessionInfo & session = ( * iterStoredSessionInfo );
+        ASSERT_GE( traj.logicTime, session.minLogicStep );
+        ASSERT_LE( traj.logicTime, session.maxLogicStep );
+
+        ASSERT_GE( traj.astroTimeMillisec, session.minTimestampMillisec );
+        ASSERT_LE( traj.astroTimeMillisec, session.maxTimestampMillisec );
     }
 }
 
@@ -312,22 +366,7 @@ TEST_F(TestDatabaseManagerBase, description_test_recorder){
 
     // III check description with payload for correctness
     {
-        SPersistenceSetFilter filter(rawMetadataOutput.persistenceSetId);
-        filter.minLogicStep = common_vars::ALL_LOGIC_STEPS;
-        const std::vector<SPersistenceTrajectory> trajOutput = m_database->readTrajectoryData( filter );
-
-        // count sessions
-        std::vector<SPersistenceTrajectory> trajOutputCopy = trajOutput;
-        std::sort( trajOutputCopy.begin(), trajOutputCopy.end(), FLessSPersistenceTrajectory() );
-        auto iter = std::unique( trajOutputCopy.begin(), trajOutputCopy.end(), FEqualSPersistenceTrajectory() );
-        trajOutputCopy.erase( iter, trajOutputCopy.end() );
-
-        const int payloadSessionCount = trajOutputCopy.size();
-        ASSERT_EQ( payloadSessionCount, storedSessionInfo2.size() );
-
-        // check session by session
-
-
+        checkDescriptionWithPayload( m_database, rawMetadataOutput.persistenceSetId, storedSessionInfo2 );
     }
 
     // IV update description
@@ -345,10 +384,10 @@ TEST_F(TestDatabaseManagerBase, description_test_recorder){
         // |***-- *****|
         // P8 (s5) s6
 
-        // S5 ( continuation )
+        // S5 ( continuation (!) )
         trajInput.sessionNum = 5;
-        trajInput.logicTime = -1;
-        trajInput.astroTimeMillisec += 0;
+        trajInput.logicTime = 2; // (!)
+        trajInput.astroTimeMillisec = 79000; // (!)
 
         for( int i = 0; i < 3; i++ ){
             trajInput.logicTime++;
@@ -373,44 +412,46 @@ TEST_F(TestDatabaseManagerBase, description_test_recorder){
 
         m_database->writeTrajectoryData( rawMetadataOutput.persistenceSetId, data );
 
-        // scan after payload increase
+        // scan TAIL after payload increase
         const SEventsSessionInfo scannedTailSession = m_database->scanPayloadTailForSessions( rawMetadataOutput.persistenceSetId );
+        vector<SEventsSessionInfo> storedSessionInfos = m_database->selectSessionDescriptions( rawMetadataOutput.persistenceSetId );
 
+        std::sort( storedSessionInfos.begin(), storedSessionInfos.end(), FLessSEventsSessionInfo() );
+        const SEventsSessionInfo lastStoredSessionInfo = storedSessionInfos.back();
 
+        // changed only existing last session
+        if( (scannedTailSession.number == lastStoredSessionInfo.number)
+                && ((scannedTailSession.minLogicStep != lastStoredSessionInfo.minLogicStep)
+                || (scannedTailSession.maxLogicStep != lastStoredSessionInfo.maxLogicStep)) ){
 
-
-    }
-
-
-
-
-    return;
-
-
-    const SEventsSessionInfo & lastStoredSession = storedSessionInfo2.back();
-    vector<SEventsSessionInfo> scannedSessions = m_database->scanPayloadForSessions( rawMetadataOutput.persistenceSetId,
-                                                                                              lastStoredSession.number );
-    // compare last stored session with scanned ones ( leave only sessions that more or equal to last stored )
-    for( auto iter = scannedSessions.begin(); iter != scannedSessions.end(); ){
-        const SEventsSessionInfo & sesInfo = ( * iter );
-
-        if( sesInfo.number < lastStoredSession.number ){
-            scannedSessions.erase( iter );
+            ASSERT_TRUE( m_database->updateSessionDescription(rawMetadataOutput.persistenceSetId, scannedTailSession) );
         }
-        else{
-            ++iter;
+        // appeared new sessions
+        else if( (scannedTailSession.number > lastStoredSessionInfo.number) ){
+
+            // scan session from the [last stored] to [last new]
+            vector<SEventsSessionInfo> scannedRangeSessionInfos = m_database->scanPayloadRangeForSessions( rawMetadataOutput.persistenceSetId,
+                {lastStoredSessionInfo.number, scannedTailSession.number} );
+
+            std::sort( scannedRangeSessionInfos.begin(), scannedRangeSessionInfos.end(), FLessSEventsSessionInfo() );
+            const SEventsSessionInfo refreshedLastStoredSessionInfo = scannedRangeSessionInfos.front();
+
+            // update last stored
+            ASSERT_TRUE( m_database->updateSessionDescription(rawMetadataOutput.persistenceSetId, refreshedLastStoredSessionInfo) );
+            scannedRangeSessionInfos.erase( scannedRangeSessionInfos.begin() );
+
+            // add rest ( new ) sessions
+            for( const SEventsSessionInfo & newSessionInfo : scannedRangeSessionInfos ){
+                ASSERT_TRUE( m_database->insertSessionDescription(rawMetadataOutput.persistenceSetId, newSessionInfo) );
+            }
         }
+
+        //
+        const vector<SEventsSessionInfo> storedSessionInfo = m_database->selectSessionDescriptions( rawMetadataOutput.persistenceSetId );
+        checkDescriptionWithPayload( m_database, rawMetadataOutput.persistenceSetId, storedSessionInfo );
+
+        // TODO: scan HEAD after payload decrease
     }
-
-    // update 5th session
-    const SEventsSessionInfo & fifthSession = scannedSessions.front();
-    m_database->updateSessionDescription( rawMetadataOutput.persistenceSetId, fifthSession );
-
-    // add new 6th session
-    const SEventsSessionInfo & newSixthSession = scannedSessions.back();
-    m_database->insertSessionDescription( rawMetadataOutput.persistenceSetId, newSixthSession );
-
-
 }
 
 // -------------------------------------------------------------------------

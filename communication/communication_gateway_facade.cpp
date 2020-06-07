@@ -124,22 +124,24 @@ PObjreprListener g_objreprListener;
 bool CommunicationGatewayFacade::initialConnections( const SInitSettings & _settings ){
 
     // shell ( domain socket )
-    Shell::SInitSettings settings1;
-    settings1.shellMode = ( _settings.paramsForInitialShell.client ? Shell::EShellMode::CLIENT : Shell::EShellMode::SERVER );
-    settings1.asyncServerMode = _settings.paramsForInitialShell.asyncServerMode;
-    settings1.asyncClientModeRequests = _settings.paramsForInitialShell.asyncClientModeRequests;
-    settings1.socketFileName = _settings.paramsForInitialShell.socketName;
-    settings1.messageMode = ( _settings.paramsForInitialShell.withSizeHeader
-                              ? Shell::EMessageMode::WITH_SIZE
-                              : Shell::EMessageMode::WITHOUT_SIZE );
+    if( _settings.paramsForInitialShell.enable ){
+        Shell::SInitSettings settings1;
+        settings1.shellMode = ( _settings.paramsForInitialShell.client ? Shell::EShellMode::CLIENT : Shell::EShellMode::SERVER );
+        settings1.asyncServerMode = _settings.paramsForInitialShell.asyncServerMode;
+        settings1.asyncClientModeRequests = _settings.paramsForInitialShell.asyncClientModeRequests;
+        settings1.socketFileName = _settings.paramsForInitialShell.socketName;
+        settings1.messageMode = ( _settings.paramsForInitialShell.withSizeHeader
+                                  ? Shell::EMessageMode::WITH_SIZE
+                                  : Shell::EMessageMode::WITHOUT_SIZE );
 
-    PShell shell = std::make_shared<Shell>( getConnectionId() );
-    if( ! shell->init(settings1) ){
-        return false;
+        PShell shell = std::make_shared<Shell>( getConnectionId() );
+        if( ! shell->init(settings1) ){
+            return false;
+        }
+
+        shell->addObserver( this );
+        m_externalNetworks.push_back( shell );
     }
-
-    shell->addObserver( this );
-    m_externalNetworks.push_back( shell );
 
     // webserver
     if( _settings.paramsForInitialHTTPServer.enable ){

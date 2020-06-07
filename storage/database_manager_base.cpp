@@ -17,25 +17,37 @@ static const string ARGS_DELIMETER = "$";
 
 bool DatabaseManagerBase::m_systemInited = false;
 int DatabaseManagerBase::m_instanceCounter = 0;
+std::mutex DatabaseManagerBase::m_muStaticProtect;
 
 // TODO: move away from database environment
 const std::string DatabaseManagerBase::ALL_CLIENT_OPERATIONS = "";
 const common_types::TPid DatabaseManagerBase::ALL_PROCESS_EVENTS = 0;
 const std::string DatabaseManagerBase::ALL_REGISTRATION_IDS = "";
 
-static string getTableInfixNameByDataType( const EPersistenceDataType _type ){
+static string convertDataTypeToStr( const EPersistenceDataType _type ){
     switch( _type ){
     case EPersistenceDataType::TRAJECTORY : {
         return "traj";
-        break;
     }
     case EPersistenceDataType::WEATHER : {
         return "weather";
-        break;
     }
     default : {
-        assert( false && "incorrect data type" );
+        assert( false && "incorrect data type enum" );
     }
+    }
+}
+
+static EPersistenceDataType convertDataTypeFromStr( const std::string & _str ){
+
+    if( "traj" == _str ){
+        return EPersistenceDataType::TRAJECTORY;
+    }
+    else if( "weather" == _str ){
+        return EPersistenceDataType::WEATHER;
+    }
+    else{
+        assert( false && "incorrect data type str" );
     }
 }
 
@@ -65,18 +77,28 @@ void DatabaseManagerBase::systemInit(){
 }
 
 DatabaseManagerBase * DatabaseManagerBase::getInstance(){
+
+    m_muStaticProtect.lock();
+
     if( ! m_systemInited ){
         systemInit();
         m_systemInited = true;
     }
     m_instanceCounter++;
+
+    m_muStaticProtect.unlock();
     return new DatabaseManagerBase();
 }
 
 void DatabaseManagerBase::destroyInstance( DatabaseManagerBase * & _inst ){
+
+    m_muStaticProtect.lock();
+
     delete _inst;
     _inst = nullptr;
     m_instanceCounter--;
+
+    m_muStaticProtect.unlock();
 }
 
 // -------------------------------------------------------------------------------------
@@ -144,6 +166,8 @@ bool DatabaseManagerBase::init( SInitSettings _settings ){
     m_allTables.push_back( m_tablePersistenceFromRaw );
     m_allTables.push_back( m_tablePersistenceFromDSS );
 
+    initPayloadTableReferences();
+
     VS_LOG_INFO << PRINT_HEADER << " instance connected to [" << _settings.host << "]" << endl;
     return true;
 }
@@ -189,6 +213,48 @@ inline bool DatabaseManagerBase::createIndex( const std::string & _tableName, co
 
     bson_destroy( createIndex );
     return false;
+}
+
+void DatabaseManagerBase::initPayloadTableReferences(){
+
+    // make query
+    bson_t * query = BCON_NEW( nullptr );
+    mongoc_cursor_t * cursor = mongoc_collection_find( m_tablePersistenceMetadata,
+            MONGOC_QUERY_NONE,
+            0,
+            0,
+            0,
+            query,
+            nullptr,
+            nullptr );
+
+    // get results
+    const bson_t * doc;
+    while( mongoc_cursor_next( cursor, & doc ) ){
+        uint len;
+        bson_iter_t iter;
+
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::SOURCE_TYPE.c_str() );
+        const common_types::EPersistenceSourceType persType = common_utils::convertPersistenceTypeFromStr( bson_iter_utf8( & iter, & len ) );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::CTX_ID.c_str() );
+        const TContextId ctxId = bson_iter_int32( & iter );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::MISSION_ID.c_str() );
+        const TMissionId missionId = bson_iter_int32( & iter );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::UPDATE_STEP_MILLISEC.c_str() );
+        const int64_t updateStepMillisec = bson_iter_int64( & iter );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::LAST_SESSION_ID.c_str() );
+        const TSessionNum sessionNum = bson_iter_int32( & iter );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::PERSISTENCE_ID.c_str() );
+        const TPersistenceSetId persId = bson_iter_int64( & iter );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::PAYLOAD_TABLE_NAME.c_str() );
+        const std::string payloadTableName = bson_iter_utf8( & iter, & len );
+
+        // reference to table
+        createPayloadTableRef( persId, payloadTableName );
+    }
+
+    mongoc_cursor_destroy( cursor );
+    bson_destroy( query );
 }
 
 inline void DatabaseManagerBase::createPayloadTableRef( common_types::TPersistenceSetId _persId, const std::string _tableName ){
@@ -238,6 +304,7 @@ bool DatabaseManagerBase::writeTrajectoryData( TPersistenceSetId _persId, const 
                                  mongo_fields::analytic::detected_object::SESSION.c_str(), BCON_INT32( traj.sessionNum ),
                                  mongo_fields::analytic::detected_object::LAT.c_str(), BCON_DOUBLE( traj.latDeg ),
                                  mongo_fields::analytic::detected_object::LON.c_str(), BCON_DOUBLE( traj.lonDeg ),
+                                 mongo_fields::analytic::detected_object::HEIGHT.c_str(), BCON_DOUBLE( traj.height ),
                                  mongo_fields::analytic::detected_object::YAW.c_str(), BCON_DOUBLE( traj.yawDeg )
                                );
 
@@ -320,6 +387,8 @@ std::vector<SPersistenceTrajectory> DatabaseManagerBase::readTrajectoryData( con
             detectedObject.latDeg = bson_iter_double( & iter );
             bson_iter_init_find( & iter, doc, mongo_fields::analytic::detected_object::LON.c_str() );
             detectedObject.lonDeg = bson_iter_double( & iter );
+            bson_iter_init_find( & iter, doc, mongo_fields::analytic::detected_object::HEIGHT.c_str() );
+            detectedObject.height = bson_iter_double( & iter );
             bson_iter_init_find( & iter, doc, mongo_fields::analytic::detected_object::YAW.c_str() );
             detectedObject.yawDeg = bson_iter_double( & iter );
         }
@@ -333,7 +402,7 @@ std::vector<SPersistenceTrajectory> DatabaseManagerBase::readTrajectoryData( con
     return out;
 }
 
-void DatabaseManagerBase::deleteTotalData( const SPersistenceSetFilter & _filter ){
+void DatabaseManagerBase::deleteDataRange( const SPersistenceSetFilter & _filter ){
 
     // TODO: remove by logic step range
 
@@ -357,15 +426,15 @@ void DatabaseManagerBase::deleteTotalData( const common_types::TContextId _ctxId
     const vector<SPersistenceMetadata> metadatas = getPersistenceSetMetadata( _ctxId );
     for( const SPersistenceMetadata & meta : metadatas ){
         for( const SPersistenceMetadataDSS & metaDSS : meta.persistenceFromDSS ){
-            deleteTotalData( SPersistenceSetFilter(metaDSS.persistenceSetId) );
+            deleteDataRange( SPersistenceSetFilter(metaDSS.persistenceSetId) );
         }
 
         for( const SPersistenceMetadataRaw & metaRaw : meta.persistenceFromRaw ){
-            deleteTotalData( SPersistenceSetFilter(metaRaw.persistenceSetId) );
+            deleteDataRange( SPersistenceSetFilter(metaRaw.persistenceSetId) );
         }
 
         for( const SPersistenceMetadataVideo & metaVideo : meta.persistenceFromVideo ){
-            deleteTotalData( SPersistenceSetFilter(metaVideo.persistenceSetId) );
+            deleteDataRange( SPersistenceSetFilter(metaVideo.persistenceSetId) );
         }
     }
 }
@@ -395,7 +464,7 @@ TPersistenceSetId DatabaseManagerBase::writePersistenceSetMetadata( const common
 
     const string payloadTableName = m_tableNamePrefix
             + string("video_")
-            + getTableInfixNameByDataType(_videoMetadata.dataType) + string("_")
+            + convertDataTypeToStr(_videoMetadata.dataType) + string("_")
             + string("sensor")
             + std::to_string(_videoMetadata.recordedFromSensorId);
 
@@ -428,7 +497,7 @@ TPersistenceSetId DatabaseManagerBase::writePersistenceSetMetadata( const common
 
     const string payloadTableName = m_tableNamePrefix
             + string("dss_")
-            + getTableInfixNameByDataType(_dssMetadata.dataType) + string("_")
+            + convertDataTypeToStr(_dssMetadata.dataType) + string("_")
             + string("ctx")
             + std::to_string(_dssMetadata.contextId)
             + string("_mission")
@@ -464,14 +533,14 @@ TPersistenceSetId DatabaseManagerBase::writePersistenceSetMetadata( const common
 
     const string payloadTableName = m_tableNamePrefix
             + string("raw_")
-            + getTableInfixNameByDataType(_rawMetadata.dataType) + string("_")
+            + convertDataTypeToStr(_rawMetadata.dataType) + string("_")
             + string("ctx")
             + std::to_string(_rawMetadata.contextId)
             + string("_mission")
             + std::to_string(_rawMetadata.missionId);
 
     // update existing PersistenceId ( if it valid of course )
-    if( _rawMetadata.persistenceSetId != SPersistenceMetadataDescr::INVALID_PERSISTENCE_ID ){
+    if( _rawMetadata.persistenceSetId != common_vars::INVALID_PERS_ID ){
 
         if( isPersistenceMetadataValid(_rawMetadata.persistenceSetId, _rawMetadata) ){
             writePersistenceMetadataGlobal( _rawMetadata.persistenceSetId, payloadTableName, _rawMetadata );
@@ -515,6 +584,7 @@ void DatabaseManagerBase::writePersistenceMetadataGlobal( const common_types::TP
             mongo_fields::persistence_set_metadata::LAST_SESSION_ID.c_str(), BCON_INT32( _meta.lastRecordedSession ),
             mongo_fields::persistence_set_metadata::UPDATE_STEP_MILLISEC.c_str(), BCON_INT64( _meta.timeStepIntervalMillisec ),
             mongo_fields::persistence_set_metadata::SOURCE_TYPE.c_str(), BCON_UTF8( common_utils::convertPersistenceTypeToStr(_meta.sourceType).c_str() ),
+            mongo_fields::persistence_set_metadata::DATA_TYPE.c_str(), BCON_UTF8( convertDataTypeToStr(_meta.dataType).c_str() ),
             mongo_fields::persistence_set_metadata::PAYLOAD_TABLE_NAME.c_str(), BCON_UTF8( _payloadTableName.c_str() ),
                             "}" );
 
@@ -646,6 +716,8 @@ std::vector<SPersistenceMetadata> DatabaseManagerBase::getPersistenceSetMetadata
 
         bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::SOURCE_TYPE.c_str() );
         const common_types::EPersistenceSourceType persType = common_utils::convertPersistenceTypeFromStr( bson_iter_utf8( & iter, & len ) );
+        bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::DATA_TYPE.c_str() );
+        const EPersistenceDataType dataType = convertDataTypeFromStr( bson_iter_utf8( & iter, & len ) );
         bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::CTX_ID.c_str() );
         const TContextId ctxId = bson_iter_int32( & iter );
         bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::MISSION_ID.c_str() );
@@ -658,9 +730,6 @@ std::vector<SPersistenceMetadata> DatabaseManagerBase::getPersistenceSetMetadata
         const TPersistenceSetId persId = bson_iter_int64( & iter );
         bson_iter_init_find( & iter, doc, mongo_fields::persistence_set_metadata::PAYLOAD_TABLE_NAME.c_str() );
         const std::string payloadTableName = bson_iter_utf8( & iter, & len );
-
-        // (for write operations)
-        createPayloadTableRef( persId, payloadTableName );
 
         //
         if( ctxId != currentCtxId ){
@@ -691,6 +760,7 @@ std::vector<SPersistenceMetadata> DatabaseManagerBase::getPersistenceSetMetadata
             currentRawMetadata.timeStepIntervalMillisec = updateStepMillisec;
             currentRawMetadata.lastRecordedSession = sessionNum;
             currentRawMetadata.sourceType = persType;
+            currentRawMetadata.dataType = dataType;
             // ...
 
             break;
@@ -1004,7 +1074,7 @@ bool DatabaseManagerBase::updateSessionDescription( const TPersistenceSetId _per
     // check that session num exist
     // ----------------------------------------------------------------------------------------------
     if( ! isSessionExistInDescription(_descr.number) ){
-        VS_LOG_ERROR << PRINT_HEADER << " ipdate description failed, such session num [" << _descr.number << "] is NOT exist" << endl;
+        VS_LOG_ERROR << PRINT_HEADER << " update description failed, such session num [" << _descr.number << "] is NOT exist" << endl;
         return false;
     }
 
@@ -1020,7 +1090,7 @@ bool DatabaseManagerBase::updateSessionDescription( const TPersistenceSetId _per
                                 mongo_fields::persistence_set_description::ASTRO_TIME_MIN.c_str(), BCON_INT64( _descr.minTimestampMillisec ),
                                 mongo_fields::persistence_set_description::ASTRO_TIME_MAX.c_str(), BCON_INT64( _descr.maxTimestampMillisec ),
                                 mongo_fields::persistence_set_description::EMPTY_STEPS_BEGIN.c_str(), BCON_INT32( 0 ),
-                                mongo_fields::persistence_set_description::ASTRO_TIME_MIN.c_str(), BCON_INT32( 0 ),
+                                mongo_fields::persistence_set_description::EMPTY_STEPS_END.c_str(), BCON_INT32( 0 ),
                               "}" );
 
     bson_error_t error;
@@ -1086,8 +1156,7 @@ vector<SEventsSessionInfo> DatabaseManagerBase::selectSessionDescriptions( const
     return out;
 }
 
-vector<SEventsSessionInfo> DatabaseManagerBase::scanPayloadForSessions2( const TPersistenceSetId _persId,
-                                                                        const TSessionNum _beginFromSession ){
+common_types::SEventsSessionInfo DatabaseManagerBase::scanPayloadHeadForSessions( const common_types::TPersistenceSetId _persId ){
 
     const string tableName = getTableName(_persId);
     bson_t * cmd = BCON_NEW(    "distinct", BCON_UTF8( tableName.c_str() ),
@@ -1103,7 +1172,100 @@ vector<SEventsSessionInfo> DatabaseManagerBase::scanPayloadForSessions2( const T
                                                     & error );
 
     if( 0 == rt ){
-        VS_LOG_ERROR << PRINT_HEADER << " get sessions failed, reason: " << error.message << endl;
+        VS_LOG_ERROR << PRINT_HEADER << " scanPayloadHeadForSessions failed, reason: " << error.message << endl;
+        bson_destroy( cmd );
+        return SEventsSessionInfo();
+    }
+
+    // fill array with session numbers
+    bson_iter_t iter;
+    bson_iter_t arrayIter;
+
+    if( ! (bson_iter_init_find( & iter, & reply, "values")
+            && BSON_ITER_HOLDS_ARRAY( & iter )
+            && bson_iter_recurse( & iter, & arrayIter ))
+      ){
+        VS_LOG_ERROR << PRINT_HEADER << "TODO: print" << endl;
+        return SEventsSessionInfo();
+    }
+
+    // get session
+    vector<TSessionNum> sessionNumbers;
+    while( bson_iter_next( & arrayIter ) ){
+        if( BSON_ITER_HOLDS_INT32( & arrayIter ) ){
+            sessionNumbers.push_back( bson_iter_int32( & arrayIter ) );
+        }
+    }
+
+    bson_destroy( cmd );
+    bson_destroy( & reply );
+    return getSessionInfo( _persId, * std::min_element(sessionNumbers.begin(), sessionNumbers.end()) );
+}
+
+common_types::SEventsSessionInfo DatabaseManagerBase::scanPayloadTailForSessions( const common_types::TPersistenceSetId _persId ){
+
+    const string tableName = getTableName(_persId);
+    bson_t * cmd = BCON_NEW(    "distinct", BCON_UTF8( tableName.c_str() ),
+                                "key", BCON_UTF8( mongo_fields::analytic::detected_object::SESSION.c_str() )
+                            );
+
+    bson_t reply;
+    bson_error_t error;
+    const bool rt = mongoc_database_command_simple( m_mongoDatabase,
+                                                    cmd,
+                                                    NULL,
+                                                    & reply,
+                                                    & error );
+
+    if( 0 == rt ){
+        VS_LOG_ERROR << PRINT_HEADER << " scanPayloadTailForSessions failed, reason: " << error.message << endl;
+        bson_destroy( cmd );
+        return SEventsSessionInfo();
+    }
+
+    // fill array with session numbers
+    bson_iter_t iter;
+    bson_iter_t arrayIter;
+
+    if( ! (bson_iter_init_find( & iter, & reply, "values")
+            && BSON_ITER_HOLDS_ARRAY( & iter )
+            && bson_iter_recurse( & iter, & arrayIter ))
+      ){
+        VS_LOG_ERROR << PRINT_HEADER << "TODO: print" << endl;
+        return SEventsSessionInfo();
+    }
+
+    // get session
+    vector<TSessionNum> sessionNumbers;
+    while( bson_iter_next( & arrayIter ) ){
+        if( BSON_ITER_HOLDS_INT32( & arrayIter ) ){
+            sessionNumbers.push_back( bson_iter_int32( & arrayIter ) );
+        }
+    }
+
+    bson_destroy( cmd );
+    bson_destroy( & reply );
+    return getSessionInfo( _persId, * std::max_element(sessionNumbers.begin(), sessionNumbers.end()) );
+}
+
+vector<SEventsSessionInfo> DatabaseManagerBase::scanPayloadRangeForSessions( const TPersistenceSetId _persId,
+        const std::pair<TSessionNum, TSessionNum> _sessionRange ){
+
+    const string tableName = getTableName(_persId);
+    bson_t * cmd = BCON_NEW(    "distinct", BCON_UTF8( tableName.c_str() ),
+                                "key", BCON_UTF8( mongo_fields::analytic::detected_object::SESSION.c_str() )
+                            );
+
+    bson_t reply;
+    bson_error_t error;
+    const bool rt = mongoc_database_command_simple( m_mongoDatabase,
+                                                    cmd,
+                                                    NULL,
+                                                    & reply,
+                                                    & error );
+
+    if( ! rt ){
+        VS_LOG_ERROR << PRINT_HEADER << " scanPayloadRangeForSessions failed, reason: " << error.message << endl;
         bson_destroy( cmd );
         return std::vector<SEventsSessionInfo>();
     }
@@ -1127,7 +1289,7 @@ vector<SEventsSessionInfo> DatabaseManagerBase::scanPayloadForSessions2( const T
         if( BSON_ITER_HOLDS_INT32( & arrayIter ) ){
             const TSessionNum sessionNumber = bson_iter_int32( & arrayIter );
 
-            if( sessionNumber >= _beginFromSession ){
+            if( sessionNumber >= _sessionRange.first && sessionNumber <= _sessionRange.second ){
                 const SEventsSessionInfo info = getSessionInfo( _persId, sessionNumber );
                 out.push_back( info );
             }
@@ -1160,7 +1322,7 @@ vector<SEventsSessionInfo> DatabaseManagerBase::scanPayloadForSessions( const TP
                                                     & error );
 
     if( 0 == rt ){
-        VS_LOG_ERROR << PRINT_HEADER << " get sessions failed, reason: " << error.message << endl;
+        VS_LOG_ERROR << PRINT_HEADER << " scanPayloadForSessions failed, reason: " << error.message << endl;
         bson_destroy( cmd );
         return std::vector<SEventsSessionInfo>();
     }
@@ -1336,7 +1498,7 @@ vector<SEventsSessionInfo> DatabaseManagerBase::splitSessionByGaps( const TPersi
 
 bool DatabaseManagerBase::isSessionExistInDescription( const common_types::TSessionNum _sessionNum ){
 
-    bson_t * query = BCON_NEW( mongo_fields::persistence_set_description::SESSION_NUM, BCON_INT32( _sessionNum ) );
+    bson_t * query = BCON_NEW( mongo_fields::persistence_set_description::SESSION_NUM.c_str(), BCON_INT32( _sessionNum ) );
 
     mongoc_cursor_t * cursor = mongoc_collection_find(  m_tablePersistenceDescription,
                                                         MONGOC_QUERY_NONE,
@@ -1347,7 +1509,9 @@ bool DatabaseManagerBase::isSessionExistInDescription( const common_types::TSess
                                                         nullptr,
                                                         nullptr );
 
-    return mongoc_cursor_more( cursor );
+    const bson_t * doc;
+    const bool rt = mongoc_cursor_next( cursor, & doc );
+    return rt;
 }
 
 void DatabaseManagerBase::deleteSessionDescription( const common_types::TPersistenceSetId _persId, const TSessionNum _sessionNum ){
@@ -1411,7 +1575,7 @@ std::vector<SEventsSessionInfo> DatabaseManagerBase::getPersistenceSetSessions( 
                                                     & error );
 
     if( 0 == rt ){
-        VS_LOG_ERROR << PRINT_HEADER << " get sessions failed, reason: " << error.message << endl;
+        VS_LOG_ERROR << PRINT_HEADER << " getPersistenceSetSessions failed, reason: " << error.message << endl;
         bson_destroy( cmd );
         return std::vector<SEventsSessionInfo>();
     }

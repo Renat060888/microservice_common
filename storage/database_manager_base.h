@@ -2,6 +2,7 @@
 #define DATABASE_MANAGER_BASE_H
 
 #include <unordered_map>
+#include <mutex>
 
 #include <mongoc.h>
 
@@ -12,6 +13,7 @@ class DatabaseManagerBase
 {
     static bool m_systemInited;
     static int m_instanceCounter;
+    static std::mutex m_muStaticProtect;
 
     // TODO: move away from database environment
     static const std::string ALL_CLIENT_OPERATIONS;
@@ -34,7 +36,11 @@ public:
     static DatabaseManagerBase * getInstance();
     static void destroyInstance( DatabaseManagerBase * & _inst );
 
+    // -------------------------------------------------------------------------------------
+    // service
+    // -------------------------------------------------------------------------------------
     bool init( SInitSettings _settings );
+    inline std::string getTableName( common_types::TPersistenceSetId _persId );
 
     // -------------------------------------------------------------------------------------
     // objects ( by 'pers id' -> more precise approach, while by 'ctx id' -> more global
@@ -53,7 +59,7 @@ public:
     std::vector<common_types::SPersistenceTrajectory> readTrajectoryData( const common_types::SPersistenceSetFilter & _filter );
     bool writeWeatherData( common_types::TPersistenceSetId _persId, const std::vector<common_types::SPersistenceWeather> & _data );
     std::vector<common_types::SPersistenceWeather> readWeatherData( const common_types::SPersistenceSetFilter & _filter );
-    void deleteTotalData( const common_types::SPersistenceSetFilter & _filter );
+    void deleteDataRange( const common_types::SPersistenceSetFilter & _filter );
     void deleteTotalData( const common_types::TContextId _ctxId );
 
     // payload description
@@ -61,9 +67,11 @@ public:
     bool updateSessionDescription( const common_types::TPersistenceSetId _persId, const common_types::SEventsSessionInfo & _descr );
     std::vector<common_types::SEventsSessionInfo> selectSessionDescriptions( const common_types::TPersistenceSetId _persId );
     std::vector<common_types::SEventsSessionInfo> scanPayloadForSessions( const common_types::TPersistenceSetId _persId,
-                                                                          const common_types::TSessionNum _beginFromSession = 0 );
-    std::vector<common_types::SEventsSessionInfo> scanPayloadForSessions2( const common_types::TPersistenceSetId _persId,
-                                                                           const common_types::TSessionNum _beginFromSession = 0 );
+            const common_types::TSessionNum _beginFromSession = 0 );
+    common_types::SEventsSessionInfo scanPayloadHeadForSessions( const common_types::TPersistenceSetId _persId );
+    common_types::SEventsSessionInfo scanPayloadTailForSessions( const common_types::TPersistenceSetId _persId );
+    std::vector<common_types::SEventsSessionInfo> scanPayloadRangeForSessions( const common_types::TPersistenceSetId _persId,
+            const std::pair<common_types::TSessionNum, common_types::TSessionNum> _sessionRange );
     void deleteSessionDescription( const common_types::TPersistenceSetId _persId, const common_types::TSessionNum _sessionNum = common_vars::ALL_SESSION_NUM );
     void deleteSessionDescription( const common_types::TContextId _ctxId );
 
@@ -121,9 +129,9 @@ private:
                                                                       const common_types::TLogicStep _logicStepThreshold = 0 );
 
     // service
+    void initPayloadTableReferences();
     inline void createPayloadTableRef( common_types::TPersistenceSetId _persId, const std::string _tableName );
-    inline mongoc_collection_t * getPayloadTableRef( common_types::TPersistenceSetId _persId );
-    inline std::string getTableName( common_types::TPersistenceSetId _persId );
+    inline mongoc_collection_t * getPayloadTableRef( common_types::TPersistenceSetId _persId );    
     inline bool createIndex( const std::string & _tableName, const std::vector<std::string> & _fieldNames );
 
     bool isPersistenceMetadataValid( common_types::TPersistenceSetId _persId, const common_types::SPersistenceMetadataDescr & _meta );
@@ -146,7 +154,7 @@ private:
 
     // service
     mongoc_client_t * m_mongoClient;
-    mongoc_database_t * m_mongoDatabase;
+    mongoc_database_t * m_mongoDatabase;    
 };
 
 #endif // DATABASE_MANAGER_BASE_H

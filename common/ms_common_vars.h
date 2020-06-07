@@ -13,9 +13,11 @@ namespace common_vars {
 static constexpr common_types::TContextId ALL_CONTEXT_ID = std::numeric_limits<common_types::TContextId>::max();
 static constexpr common_types::TContextId INVALID_CONTEXT_ID = 0;
 static constexpr common_types::TSessionNum INVALID_SESSION_NUM = -1;
+static constexpr common_types::TPersistenceSetId INVALID_PERS_ID = -1;
 static constexpr common_types::TSessionNum ALL_SESSION_NUM = std::numeric_limits<common_types::TSessionNum>::max();
 static constexpr common_types::TMissionId INVALID_MISSION_ID = 0;
 static constexpr common_types::TLogicStep INVALID_LOGIC_STEP = -1;
+static constexpr common_types::TLogicStep ALL_LOGIC_STEPS = std::numeric_limits<common_types::TLogicStep>::min();
 
 // ------------------------------------------------------------------------
 // network commands
@@ -50,6 +52,7 @@ namespace detected_object {
     const std::string OBJRERP_ID = "objrepr_id";
     const std::string LAT = "lat";
     const std::string LON = "lon";
+    const std::string HEIGHT = "height";
     const std::string YAW = "yaw";
     const std::string STATE = "state";
     const std::string ASTRO_TIME = "astro_time";
@@ -69,6 +72,7 @@ namespace persistence_set_metadata {
     const std::string LAST_SESSION_ID = "last_session_id";
     const std::string UPDATE_STEP_MILLISEC = "update_step_millisec";
     const std::string SOURCE_TYPE = "source_type";
+    const std::string DATA_TYPE = "data_type";
     const std::string PAYLOAD_TABLE_NAME = "payload_table_name";
 }
 

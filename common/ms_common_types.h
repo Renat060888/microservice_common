@@ -117,6 +117,9 @@ struct SPersistenceMetadataDSS : SPersistenceMetadataDescr {
 };
 
 struct SPersistenceMetadataRaw : SPersistenceMetadataDescr {
+    SPersistenceMetadataRaw()
+        : a(0)
+    {}
 
     bool operator==( const SPersistenceMetadataRaw & _rhs ) const {
         return ( SPersistenceMetadataDescr::operator==(_rhs) && (this->a == _rhs.a) );
@@ -151,8 +154,9 @@ struct SPersistenceObj {
 
 struct SPersistenceTrajectory : SPersistenceObj {
 
-    float latDeg;
-    float lonDeg;
+    double latDeg;
+    double lonDeg;
+    double height;
     double yawDeg;
 };
 
@@ -237,8 +241,8 @@ struct SUserState {
 };
 using PUserState = std::shared_ptr<SUserState>;
 
-struct FunctorObjectStep {
-    FunctorObjectStep( TLogicStep _stepToFind )
+struct FEqualSObjectStep {
+    FEqualSObjectStep( TLogicStep _stepToFind )
         : stepToFind(_stepToFind)
     {}
 

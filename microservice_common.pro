@@ -17,10 +17,10 @@ QMAKE_CXXFLAGS += -Wno-unused-variable
 
 # TODO: add defines to logger, system monitor, restbed webserver, database, etc...
 DEFINES += \
-    SWITCH_LOGGER_SIMPLE \
-#    SWITCH_LOGGER_ASTRA \
-#    OBJREPR_LIBRARY_EXIST \
-    UNIT_TESTS_GOOGLE \
+#    SWITCH_LOGGER_SIMPLE \
+    SWITCH_LOGGER_ASTRA \
+    OBJREPR_LIBRARY_EXIST \
+#    UNIT_TESTS_GOOGLE \
 
 INCLUDEPATH += \
     /usr/include/libgtop-2.0 \
@@ -87,11 +87,16 @@ SOURCES += \
         system/threaded_multitask_service.cpp \
         system/wal.cpp \
         unit_tests/communication_tests.cpp \
-        unit_tests/database_manager_base_test.cpp \
         unit_tests/storage_tests.cpp \
         unit_tests/system_tests.cpp \
     system/system_environment_facade.cpp \
-    communication/network_splitter.cpp
+    communication/network_splitter.cpp \
+
+contains( DEFINES, UNIT_TESTS_GOOGLE ){
+    message("connect 'gtests' library")
+SOURCES += \
+    unit_tests/test_database_manager_base.cpp
+}
 
 HEADERS += \
     3rd_party/EdUrlParser.h \
@@ -137,9 +142,17 @@ HEADERS += \
     system/threaded_multitask_service.h \
     system/wal.h \
     unit_tests/communication_tests.h \
-    unit_tests/database_manager_base_test.h \
     unit_tests/storage_tests.h \
     unit_tests/system_tests.h \
     analyze/dummy.h \
     system/system_environment_facade.h \
-    communication/network_splitter.h
+    communication/network_splitter.h \
+
+contains( DEFINES, UNIT_TESTS_GOOGLE ){
+    message("connect 'gtests' library")
+HEADERS += \
+    unit_tests/test_database_manager_base.h
+}
+
+
+

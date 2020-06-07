@@ -15,6 +15,10 @@ protected:
     static void SetUpTestCase();
     static void TearDownTestCase();
 
+//    void metadata_test_recorder();
+//    void payload_test_recorder();
+//    void description_test_recorder();
+
     static DatabaseManagerBase * m_database;
 };
 
